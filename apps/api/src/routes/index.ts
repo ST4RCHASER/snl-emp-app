@@ -1,0 +1,10 @@
+export { employeeRoutes } from "./employees.js";
+export { leaveRoutes } from "./leaves.js";
+export { complaintRoutes } from "./complaints.js";
+export { settingsRoutes } from "./settings.js";
+export { calendarRoutes } from "./calendar.js";
+export { preferencesRoutes } from "./preferences.js";
+export { announcementRoutes } from "./announcements.js";
+export { notesRoutes } from "./notes.js";
+export { uploadRoutes } from "./upload.js";
+export { workLogRoutes } from "./worklogs.js";

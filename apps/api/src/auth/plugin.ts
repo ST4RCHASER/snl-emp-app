@@ -1,0 +1,70 @@
+import { Elysia } from "elysia";
+import { auth, type Session } from "./index.js";
+
+export const betterAuthView = new Elysia({ name: "better-auth-view" }).all(
+  "/api/auth/*",
+  async ({ request }) => {
+    return auth.handler(request);
+  },
+);
+
+export const authPlugin = new Elysia({ name: "auth-plugin" })
+  .use(betterAuthView)
+  .derive({ as: "scoped" }, async ({ request }) => {
+    const session = await auth.api.getSession({
+      headers: request.headers,
+    });
+
+    return {
+      session: session?.session ?? null,
+      user: session?.user ?? null,
+    };
+  })
+  .macro(({ onBeforeHandle }) => ({
+    auth(enabled: boolean) {
+      if (!enabled) return;
+      onBeforeHandle(
+        (
+          ctx: Record<string, unknown> & {
+            session: Session | null;
+            user: Session["user"] | null;
+            error: (status: number, body: { message: string }) => Response;
+          },
+        ) => {
+          if (!ctx.session || !ctx.user) {
+            return ctx.error(401, { message: "Unauthorized" });
+          }
+        },
+      );
+    },
+    roles(allowedRoles: string[]) {
+      if (!allowedRoles || allowedRoles.length === 0) return;
+      onBeforeHandle(
+        (
+          ctx: Record<string, unknown> & {
+            user: Session["user"] | null;
+            error: (status: number, body: { message: string }) => Response;
+          },
+        ) => {
+          if (!ctx.user) {
+            return ctx.error(401, { message: "Unauthorized" });
+          }
+
+          const userRole = ctx.user.role || "EMPLOYEE";
+
+          // DEVELOPER can access everything
+          if (userRole === "DEVELOPER") {
+            return;
+          }
+
+          if (!allowedRoles.includes(userRole)) {
+            return ctx.error(403, {
+              message: "Forbidden: Insufficient permissions",
+            });
+          }
+        },
+      );
+    },
+  }));
+
+export type AuthPlugin = typeof authPlugin;

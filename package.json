@@ -1,0 +1,27 @@
+{
+  "name": "snl-emp-app",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "dotenv -- turbo dev",
+    "build": "dotenv -- turbo build",
+    "dev:api": "dotenv -- turbo dev --filter=@snl-emp/api",
+    "dev:web": "dotenv -- turbo dev --filter=@snl-emp/web",
+    "db:generate": "dotenv -- turbo db:generate",
+    "db:push": "dotenv -- turbo db:push",
+    "db:migrate": "dotenv -- pnpm --filter @snl-emp/db migrate",
+    "db:studio": "dotenv -- prisma studio --schema=prisma/schema.prisma",
+    "typecheck": "dotenv -- turbo typecheck",
+    "lint": "dotenv -- turbo lint",
+    "clean": "dotenv -- turbo clean && rm -rf node_modules"
+  },
+  "devDependencies": {
+    "dotenv": "^16.4.7",
+    "dotenv-cli": "^11.0.0",
+    "prisma": "^6.2.1",
+    "turbo": "^2.3.3",
+    "typescript": "^5.7.3"
+  },
+  "packageManager": "pnpm@9.15.4"
+}

@@ -1,0 +1,453 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../packages/db/src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==================== ENUMS ====================
+
+enum Role {
+  EMPLOYEE
+  HR
+  MANAGEMENT
+  DEVELOPER
+}
+
+enum LeaveStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum LeaveType {
+  ANNUAL
+  SICK
+  PERSONAL
+  BIRTHDAY
+  UNPAID
+  OTHER
+}
+
+enum ComplaintStatus {
+  BACKLOG
+  IN_PROGRESS
+  DONE
+}
+
+// ==================== AUTH TABLES (Better Auth) ====================
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  emailVerified Boolean   @default(false)
+  name          String?
+  image         String?
+  role          Role      @default(EMPLOYEE)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  banned     Boolean   @default(false)
+  banReason  String?
+  banExpires DateTime?
+
+  sessions    Session[]
+  accounts    Account[]
+  employee    Employee?
+  preferences UserPreferences?
+
+  @@map("users")
+}
+
+// ==================== USER PREFERENCES ====================
+
+model UserPreferences {
+  id     String @id @default(cuid())
+  userId String @unique
+
+  theme           String  @default("system") // "system", "light", or "dark"
+  accentColor     String  @default("#0078d4") // Hex color
+  backgroundImage String? // URL to background image
+  backgroundFit   String  @default("cover") // "cover", "contain", "fill", "center"
+  backgroundColor String  @default("#1a1a1a") // Background color for fit modes
+  guiScale        Float   @default(1.0) // GUI scaling factor 0.1 - 5.0
+  iconPositions   Json?   // { appId: { x: number, y: number } }
+  widgets         Json?   // Array of widget objects
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_preferences")
+}
+
+model Session {
+  id             String   @id @default(cuid())
+  userId         String
+  token          String   @unique
+  expiresAt      DateTime
+  ipAddress      String?
+  userAgent      String?
+  impersonatedBy String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model Account {
+  id                    String    @id @default(cuid())
+  userId                String
+  accountId             String
+  providerId            String
+  accessToken           String?
+  refreshToken          String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  idToken               String?
+  password              String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("accounts")
+}
+
+model Verification {
+  id         String   @id @default(cuid())
+  identifier String
+  value      String
+  expiresAt  DateTime
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("verifications")
+}
+
+// ==================== EMPLOYEE TABLE ====================
+
+model Employee {
+  id         String @id @default(cuid())
+  userId     String @unique
+  employeeId String @unique // Company employee ID (e.g., EMP-001)
+
+  // Personal Information (all optional as per requirements)
+  fullName    String?
+  nickname    String?
+  avatar      String?
+  phone       String?
+  dateOfBirth DateTime?
+
+  // Address (optional)
+  addressLine1 String?
+  addressLine2 String?
+  city         String?
+  state        String?
+  postalCode   String?
+  country      String?
+
+  // Employment Details (optional, HR-editable)
+  department String?
+  position   String?
+  salary     Decimal?  @db.Decimal(12, 2)
+  hireDate   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user             User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  managementLeads  EmployeeManagement[] @relation("EmployeeToManagement")
+  managedEmployees EmployeeManagement[] @relation("ManagementToEmployee")
+  leaveRequests    LeaveRequest[]
+  leaveApprovals   LeaveApproval[]
+  complaints       Complaint[]
+  workLogs         WorkLog[]
+
+  @@map("employees")
+}
+
+// ==================== EMPLOYEE-MANAGEMENT RELATIONSHIP ====================
+
+model EmployeeManagement {
+  id         String   @id @default(cuid())
+  employeeId String
+  managerId  String
+  assignedAt DateTime @default(now())
+
+  employee Employee @relation("EmployeeToManagement", fields: [employeeId], references: [id], onDelete: Cascade)
+  manager  Employee @relation("ManagementToEmployee", fields: [managerId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, managerId])
+  @@map("employee_management")
+}
+
+// ==================== LEAVE SYSTEM ====================
+
+model LeaveRequest {
+  id         String @id @default(cuid())
+  employeeId String
+
+  type        LeaveType   @default(ANNUAL)
+  reason      String
+  startDate   DateTime
+  endDate     DateTime
+  isHalfDay   Boolean     @default(false)
+  halfDayType String? // "morning" or "afternoon" if isHalfDay
+
+  status LeaveStatus @default(PENDING)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employee  Employee        @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  approvals LeaveApproval[]
+
+  @@map("leave_requests")
+}
+
+model LeaveApproval {
+  id             String @id @default(cuid())
+  leaveRequestId String
+  approverId     String
+
+  approved    Boolean?
+  comment     String?
+  respondedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  leaveRequest LeaveRequest @relation(fields: [leaveRequestId], references: [id], onDelete: Cascade)
+  approver     Employee     @relation(fields: [approverId], references: [id], onDelete: Cascade)
+
+  @@unique([leaveRequestId, approverId])
+  @@map("leave_approvals")
+}
+
+// ==================== GLOBAL SETTINGS ====================
+
+model GlobalSettings {
+  id String @id @default("global")
+
+  // Leave quotas per year
+  maxAnnualLeaveDays      Int @default(10)
+  maxSickLeaveDays        Int @default(30)
+  maxPersonalLeaveDays    Int @default(7)
+  maxBirthdayLeaveDays    Int @default(1)
+
+  // Annual leave carry-over settings
+  annualLeaveCarryoverMax Int @default(3)
+
+  // General settings
+  maxConsecutiveLeaveDays Int @default(14)
+  fiscalYearStartMonth    Int @default(1)
+
+  // Work hours settings
+  workHoursPerDay Float @default(8) // Standard work hours per day
+
+  // Complaint settings
+  complaintChatEnabled Boolean @default(true) // Enable/disable chat for complaints
+
+  updatedAt DateTime @updatedAt
+
+  @@map("global_settings")
+}
+
+// ==================== WORK LOG SYSTEM ====================
+
+model WorkLog {
+  id         String @id @default(cuid())
+  employeeId String
+
+  title       String
+  description String? @db.Text
+  hours       Float   // Hours worked (can be decimal like 1.5)
+  date        DateTime @db.Date // The date of work
+
+  // Who created this entry (for audit - manager can add for employee)
+  createdById String
+
+  // Soft delete
+  isDeleted   Boolean   @default(false)
+  deletedAt   DateTime?
+  deletedById String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employee  Employee       @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  auditLogs WorkLogAudit[]
+
+  @@index([employeeId])
+  @@index([date])
+  @@index([employeeId, date])
+  @@index([isDeleted])
+  @@map("work_logs")
+}
+
+enum WorkLogAuditAction {
+  CREATED
+  UPDATED
+  DELETED
+}
+
+model WorkLogAudit {
+  id        String @id @default(cuid())
+  workLogId String
+
+  action    WorkLogAuditAction
+  userId    String // Who performed the action
+  userName  String? // Cached name for display
+
+  // Snapshot of changes (for updates)
+  oldValues Json? // Previous values before change
+  newValues Json? // New values after change
+
+  createdAt DateTime @default(now())
+
+  workLog WorkLog @relation(fields: [workLogId], references: [id], onDelete: Cascade)
+
+  @@index([workLogId])
+  @@index([userId])
+  @@map("work_log_audits")
+}
+
+// ==================== COMPLAINT SYSTEM ====================
+
+model Complaint {
+  id         String @id @default(cuid())
+  employeeId String
+
+  subject     String
+  description String          @db.Text
+  status      ComplaintStatus @default(BACKLOG)
+  isAnonymous Boolean         @default(true) // Whether the complaint is anonymous
+
+  // HR Response (used when chat is disabled)
+  hrResponse    String?   @db.Text
+  hrRespondedBy String?
+  hrRespondedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employee Employee           @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  messages ComplaintMessage[]
+
+  @@map("complaints")
+}
+
+model ComplaintMessage {
+  id          String @id @default(cuid())
+  complaintId String
+  userId      String // The user who sent the message
+
+  content  String  @db.Text
+  isFromHR Boolean @default(false) // To identify HR messages vs employee messages
+
+  // Attachment support (optional)
+  attachmentUrl  String? // URL from m1r.ai
+  attachmentName String? // Original filename
+  attachmentType String? // MIME type (e.g., "image/png", "application/pdf")
+  attachmentSize Int?    // File size in bytes
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  complaint Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+
+  @@index([complaintId])
+  @@map("complaint_messages")
+}
+
+// ==================== ANNOUNCEMENT SYSTEM ====================
+
+model Announcement {
+  id String @id @default(cuid())
+
+  title   String
+  content String @db.Text // Rich text / BBS style content
+  images  Json?  // Array of image URLs
+
+  order     Int      @default(0) // For ordering (lower = higher priority)
+  isActive  Boolean  @default(true)
+  createdBy String // User ID of HR who created
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  readReceipts AnnouncementRead[]
+
+  @@map("announcements")
+}
+
+model AnnouncementRead {
+  id             String @id @default(cuid())
+  announcementId String
+  userId         String
+
+  readAt DateTime @default(now())
+
+  announcement Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+
+  @@unique([announcementId, userId])
+  @@map("announcement_reads")
+}
+
+// ==================== NOTES SYSTEM ====================
+
+model Note {
+  id     String @id @default(cuid())
+  userId String
+
+  title    String   @default("")
+  content  String   @db.Text // Rich text content (HTML)
+  preview  String?  // Plain text preview for sidebar
+
+  isPinned  Boolean @default(false)
+  isLocked  Boolean @default(false) // Password protected
+  lockHash  String? // Hashed password for locked notes
+
+  color     String? // Background color for the note
+
+  folderId  String? // Optional folder organization
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  folder NoteFolder? @relation(fields: [folderId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([folderId])
+  @@map("notes")
+}
+
+model NoteFolder {
+  id     String @id @default(cuid())
+  userId String
+
+  name  String
+  color String? // Folder color
+  icon  String? // Folder icon
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  notes Note[]
+
+  @@index([userId])
+  @@map("note_folders")
+}

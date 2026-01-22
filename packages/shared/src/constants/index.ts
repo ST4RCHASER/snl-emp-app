@@ -1,0 +1,65 @@
+export const ROLES = {
+  EMPLOYEE: "EMPLOYEE",
+  HR: "HR",
+  MANAGEMENT: "MANAGEMENT",
+  DEVELOPER: "DEVELOPER",
+} as const;
+
+export type Role = (typeof ROLES)[keyof typeof ROLES];
+
+export const LEAVE_STATUS = {
+  PENDING: "PENDING",
+  APPROVED: "APPROVED",
+  REJECTED: "REJECTED",
+  CANCELLED: "CANCELLED",
+} as const;
+
+export type LeaveStatus = (typeof LEAVE_STATUS)[keyof typeof LEAVE_STATUS];
+
+export const LEAVE_TYPE = {
+  ANNUAL: "ANNUAL",
+  SICK: "SICK",
+  PERSONAL: "PERSONAL",
+  BIRTHDAY: "BIRTHDAY",
+  UNPAID: "UNPAID",
+  OTHER: "OTHER",
+} as const;
+
+export type LeaveType = (typeof LEAVE_TYPE)[keyof typeof LEAVE_TYPE];
+
+export const COMPLAINT_STATUS = {
+  UNREAD: "UNREAD",
+  READ: "READ",
+  IN_PROGRESS: "IN_PROGRESS",
+  DONE: "DONE",
+} as const;
+
+export type ComplaintStatus =
+  (typeof COMPLAINT_STATUS)[keyof typeof COMPLAINT_STATUS];
+
+export const HALF_DAY_TYPE = {
+  MORNING: "morning",
+  AFTERNOON: "afternoon",
+} as const;
+
+export type HalfDayType = (typeof HALF_DAY_TYPE)[keyof typeof HALF_DAY_TYPE];
+
+// Role hierarchy for access control
+export const ROLE_HIERARCHY: Record<Role, number> = {
+  EMPLOYEE: 1,
+  HR: 2,
+  MANAGEMENT: 2,
+  DEVELOPER: 99,
+};
+
+// Check if a role can perform actions on another role
+export function canManageRole(actorRole: Role, targetRole: Role): boolean {
+  if (actorRole === "DEVELOPER") return true;
+  return ROLE_HIERARCHY[actorRole] > ROLE_HIERARCHY[targetRole];
+}
+
+// Check if user has one of the required roles
+export function hasRole(userRole: Role, requiredRoles: Role[]): boolean {
+  if (userRole === "DEVELOPER") return true;
+  return requiredRoles.includes(userRole);
+}
