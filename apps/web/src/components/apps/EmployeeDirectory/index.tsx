@@ -13,12 +13,15 @@ import {
   makeStyles,
   Dropdown,
   Option,
+  Card,
 } from "@fluentui/react-components";
 import {
   Search24Regular,
   Edit24Regular,
-  Dismiss24Regular,
   ArrowLeft24Regular,
+  Mail24Regular,
+  Building24Regular,
+  Person24Regular,
 } from "@fluentui/react-icons";
 import {
   employeeQueries,
@@ -26,8 +29,10 @@ import {
   useAssignManagers,
   useUpdateUserRole,
 } from "@/api/queries/employees";
+import { logAction } from "@/api/queries/audit";
 import { useAuth } from "@/auth/provider";
 import { useWindowRefresh } from "@/components/desktop/WindowContext";
+import { useMobile } from "@/hooks/useMobile";
 
 const useStyles = makeStyles({
   container: {
@@ -233,6 +238,7 @@ interface EditFormData {
 
 export default function EmployeeDirectory() {
   const styles = useStyles();
+  const isMobile = useMobile();
   const [search, setSearch] = useState("");
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
   const [selectedManagers, setSelectedManagers] = useState<string[]>([]);
@@ -257,7 +263,12 @@ export default function EmployeeDirectory() {
   const queryKeys = useMemo(() => [["employees"]], []);
   useWindowRefresh(queryKeys);
 
-  const { data: employees, isLoading, error } = useQuery(employeeQueries.all);
+  const {
+    data: employeesData,
+    isLoading,
+    error,
+  } = useQuery(employeeQueries.all);
+  const employees = employeesData as Employee[] | undefined;
   const { data: currentManagers } = useQuery({
     ...employeeQueries.managers(editingEmployee?.id || ""),
     enabled: !!editingEmployee,
@@ -267,8 +278,9 @@ export default function EmployeeDirectory() {
   const assignManagers = useAssignManagers();
   const updateUserRole = useUpdateUserRole();
 
-  const isHR = user?.role === "HR" || user?.role === "DEVELOPER";
-  const isDeveloper = user?.role === "DEVELOPER";
+  const userRole = (user as { role?: string } | undefined)?.role;
+  const isHR = userRole === "HR" || userRole === "DEVELOPER";
+  const isDeveloper = userRole === "DEVELOPER";
 
   // Get employees who can be managers (MANAGEMENT or DEVELOPER role)
   const availableManagers = employees?.filter(
@@ -279,16 +291,16 @@ export default function EmployeeDirectory() {
 
   // Update selected managers when currentManagers data loads
   useEffect(() => {
-    if (currentManagers) {
-      setSelectedManagers(currentManagers.map((m) => m.id));
+    if (currentManagers && Array.isArray(currentManagers)) {
+      setSelectedManagers(currentManagers.map((m: { id: string }) => m.id));
     }
   }, [currentManagers]);
 
-  const filteredEmployees = employees?.filter((emp) => {
+  const filteredEmployees = employees?.filter((emp: Employee) => {
     const searchLower = search.toLowerCase();
     return (
-      emp.firstName?.toLowerCase().includes(searchLower) ||
-      emp.lastName?.toLowerCase().includes(searchLower) ||
+      emp.fullName?.toLowerCase().includes(searchLower) ||
+      emp.nickname?.toLowerCase().includes(searchLower) ||
       emp.user.email.toLowerCase().includes(searchLower) ||
       emp.employeeId.toLowerCase().includes(searchLower) ||
       emp.department?.toLowerCase().includes(searchLower) ||
@@ -317,6 +329,12 @@ export default function EmployeeDirectory() {
       salary: emp.salary ? String(emp.salary) : "",
       hireDate: emp.hireDate ? emp.hireDate.split("T")[0] : "",
     });
+    logAction(
+      "edit_employee",
+      "navigation",
+      `Opened edit form for employee ${emp.employeeId}`,
+      { employeeId: emp.id },
+    );
   };
 
   const handleBack = () => {
@@ -415,7 +433,10 @@ export default function EmployeeDirectory() {
         </div>
 
         <div className={styles.editContent}>
-          <div className={styles.formGrid}>
+          <div
+            className={styles.formGrid}
+            style={isMobile ? { gridTemplateColumns: "1fr" } : undefined}
+          >
             <div className={styles.sectionTitle}>Personal Information</div>
             <Field label="Full Name" size="small" className={styles.fullWidth}>
               <Input
@@ -553,7 +574,7 @@ export default function EmployeeDirectory() {
             <div className={styles.sectionTitle}>Assign Managers</div>
             <div className={styles.managerList}>
               {availableManagers && availableManagers.length > 0 ? (
-                availableManagers.map((manager) => (
+                availableManagers.map((manager: Employee) => (
                   <div key={manager.id} className={styles.managerItem}>
                     <Checkbox
                       size="medium"
@@ -563,7 +584,7 @@ export default function EmployeeDirectory() {
                       }
                     />
                     <Avatar
-                      name={getEmployeeName(manager as Employee)}
+                      name={getEmployeeName(manager)}
                       image={{
                         src: manager.avatar || manager.user.image || undefined,
                       }}
@@ -571,7 +592,7 @@ export default function EmployeeDirectory() {
                       color="colorful"
                     />
                     <span style={{ fontSize: "13px" }}>
-                      {getEmployeeName(manager as Employee)}
+                      {getEmployeeName(manager)}
                     </span>
                     <Badge
                       size="small"
@@ -597,7 +618,7 @@ export default function EmployeeDirectory() {
             </div>
 
             {/* Role Management - Developer Only */}
-            {isDeveloper && editingEmployee.userId !== user?.id && (
+            {isDeveloper && editingEmployee.user.id !== user?.id && (
               <>
                 <div className={styles.sectionTitle}>Role Management</div>
                 <Field label="User Role" size="small">
@@ -680,93 +701,197 @@ export default function EmployeeDirectory() {
           value={search}
           onChange={(_, data) => setSearch(data.value)}
           contentBefore={<Search24Regular />}
-          style={{ maxWidth: 300 }}
+          style={{ maxWidth: isMobile ? "100%" : 300, width: "100%" }}
         />
       </div>
 
       <div className={styles.tableContainer}>
-        <table className={styles.table}>
-          <thead>
-            <tr>
-              <th className={styles.th} style={{ width: colWidths.employee }}>
-                Employee
-              </th>
-              <th className={styles.th} style={{ width: colWidths.dept }}>
-                Department
-              </th>
-              <th className={styles.th} style={{ width: colWidths.position }}>
-                Position
-              </th>
-              <th className={styles.th} style={{ width: colWidths.phone }}>
-                Phone
-              </th>
-              {isHR && (
-                <th className={styles.th} style={{ width: colWidths.actions }}>
-                  Actions
-                </th>
-              )}
-            </tr>
-          </thead>
-          <tbody>
-            {filteredEmployees?.map((emp) => (
-              <tr key={emp.id} className={styles.tr}>
-                <td className={styles.td}>
-                  <div className={styles.employeeCell}>
-                    <Avatar
-                      name={getEmployeeName(emp as Employee)}
-                      image={{ src: emp.avatar || emp.user.image || undefined }}
-                      size={32}
-                      color="colorful"
-                    />
-                    <div className={styles.employeeInfo}>
-                      <div
-                        className={styles.employeeName}
-                        title={getEmployeeName(emp as Employee)}
-                      >
-                        {getEmployeeName(emp as Employee)}
-                      </div>
-                      <div
-                        className={styles.employeeEmail}
-                        title={emp.user.email}
+        {isMobile ? (
+          // Mobile Card View
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 12,
+              padding: "0 4px",
+            }}
+          >
+            {filteredEmployees?.map((emp: Employee) => (
+              <Card key={emp.id} style={{ padding: 12 }}>
+                <div
+                  style={{ display: "flex", alignItems: "flex-start", gap: 12 }}
+                >
+                  <Avatar
+                    name={getEmployeeName(emp)}
+                    image={{ src: emp.avatar || emp.user.image || undefined }}
+                    size={40}
+                    color="colorful"
+                  />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 500, marginBottom: 2 }}>
+                      {getEmployeeName(emp)}
+                    </div>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 4,
+                        fontSize: 12,
+                        color: tokens.colorNeutralForeground3,
+                        marginBottom: 6,
+                      }}
+                    >
+                      <Mail24Regular style={{ fontSize: 14 }} />
+                      <span
+                        style={{
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
                       >
                         {emp.user.email}
-                      </div>
+                      </span>
+                    </div>
+                    <div
+                      style={{
+                        display: "flex",
+                        flexWrap: "wrap",
+                        gap: 8,
+                        fontSize: 12,
+                        color: tokens.colorNeutralForeground2,
+                      }}
+                    >
+                      {emp.department && (
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 4,
+                          }}
+                        >
+                          <Building24Regular style={{ fontSize: 14 }} />
+                          <span>{emp.department}</span>
+                        </div>
+                      )}
+                      {emp.position && (
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 4,
+                          }}
+                        >
+                          <Person24Regular style={{ fontSize: 14 }} />
+                          <span>{emp.position}</span>
+                        </div>
+                      )}
                     </div>
                   </div>
-                </td>
-                <td className={styles.td}>
-                  <span
-                    className={styles.textCell}
-                    title={emp.department || "-"}
-                  >
-                    {emp.department || "-"}
-                  </span>
-                </td>
-                <td className={styles.td}>
-                  <span className={styles.textCell} title={emp.position || "-"}>
-                    {emp.position || "-"}
-                  </span>
-                </td>
-                <td className={styles.td}>
-                  <span className={styles.textCell} title={emp.phone || "-"}>
-                    {emp.phone || "-"}
-                  </span>
-                </td>
-                {isHR && (
-                  <td className={styles.td}>
+                  {isHR && (
                     <Button
-                      className={styles.editButton}
                       appearance="subtle"
                       icon={<Edit24Regular />}
-                      onClick={() => handleEditClick(emp as Employee)}
-                      title="Edit employee"
+                      onClick={() => handleEditClick(emp)}
+                      size="small"
                     />
-                  </td>
+                  )}
+                </div>
+              </Card>
+            ))}
+          </div>
+        ) : (
+          // Desktop Table View
+          <table className={styles.table}>
+            <thead>
+              <tr>
+                <th className={styles.th} style={{ width: colWidths.employee }}>
+                  Employee
+                </th>
+                <th className={styles.th} style={{ width: colWidths.dept }}>
+                  Department
+                </th>
+                <th className={styles.th} style={{ width: colWidths.position }}>
+                  Position
+                </th>
+                <th className={styles.th} style={{ width: colWidths.phone }}>
+                  Phone
+                </th>
+                {isHR && (
+                  <th
+                    className={styles.th}
+                    style={{ width: colWidths.actions }}
+                  >
+                    Actions
+                  </th>
                 )}
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {filteredEmployees?.map((emp: Employee) => (
+                <tr key={emp.id} className={styles.tr}>
+                  <td className={styles.td}>
+                    <div className={styles.employeeCell}>
+                      <Avatar
+                        name={getEmployeeName(emp)}
+                        image={{
+                          src: emp.avatar || emp.user.image || undefined,
+                        }}
+                        size={32}
+                        color="colorful"
+                      />
+                      <div className={styles.employeeInfo}>
+                        <div
+                          className={styles.employeeName}
+                          title={getEmployeeName(emp)}
+                        >
+                          {getEmployeeName(emp)}
+                        </div>
+                        <div
+                          className={styles.employeeEmail}
+                          title={emp.user.email}
+                        >
+                          {emp.user.email}
+                        </div>
+                      </div>
+                    </div>
+                  </td>
+                  <td className={styles.td}>
+                    <span
+                      className={styles.textCell}
+                      title={emp.department || "-"}
+                    >
+                      {emp.department || "-"}
+                    </span>
+                  </td>
+                  <td className={styles.td}>
+                    <span
+                      className={styles.textCell}
+                      title={emp.position || "-"}
+                    >
+                      {emp.position || "-"}
+                    </span>
+                  </td>
+                  <td className={styles.td}>
+                    <span className={styles.textCell} title={emp.phone || "-"}>
+                      {emp.phone || "-"}
+                    </span>
+                  </td>
+                  {isHR && (
+                    <td className={styles.td}>
+                      <Button
+                        className={styles.editButton}
+                        appearance="subtle"
+                        icon={<Edit24Regular />}
+                        onClick={() => handleEditClick(emp)}
+                        title="Edit employee"
+                      />
+                    </td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
 
         {filteredEmployees?.length === 0 && (
           <div

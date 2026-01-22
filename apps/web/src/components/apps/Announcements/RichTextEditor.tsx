@@ -158,7 +158,7 @@ export function RichTextEditor({
     label,
     disabled,
   }: {
-    icon?: React.ReactNode;
+    icon?: React.ReactElement;
     tooltip: string;
     onClick: () => void;
     label?: string;
@@ -178,7 +178,7 @@ export function RichTextEditor({
           fontWeight: label ? 600 : undefined,
         }}
       >
-        {label}
+        {label ? label : undefined}
       </Button>
     </Tooltip>
   );

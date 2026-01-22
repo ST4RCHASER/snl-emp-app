@@ -8,3 +8,4 @@ export { announcementRoutes } from "./announcements.js";
 export { notesRoutes } from "./notes.js";
 export { uploadRoutes } from "./upload.js";
 export { workLogRoutes } from "./worklogs.js";
+export { auditRoutes } from "./audit.js";

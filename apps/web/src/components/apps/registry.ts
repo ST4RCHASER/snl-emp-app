@@ -89,6 +89,14 @@ export const appRegistry: AppDefinition[] = [
     defaultSize: { width: 1000, height: 650 },
     roles: ["MANAGEMENT", "DEVELOPER"],
   },
+  {
+    id: "audit-logs",
+    name: "Audit Logs",
+    icon: "DocumentSearch",
+    component: lazy(() => import("./AuditLogs")),
+    defaultSize: { width: 950, height: 650 },
+    roles: ["DEVELOPER"],
+  },
 ];
 
 export function getAppById(appId: string): AppDefinition | undefined {

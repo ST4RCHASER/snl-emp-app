@@ -4,6 +4,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { api } from "../client";
+import { logAction } from "./audit";
 
 export interface WorkLogAudit {
   id: string;
@@ -129,8 +130,18 @@ export function useCreateWorkLog() {
       if (error) throw error;
       return result;
     },
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["worklogs"] });
+      logAction(
+        "create_worklog",
+        "form",
+        `Logged ${variables.hours}h of work`,
+        {
+          title: variables.title,
+          hours: variables.hours,
+          date: variables.date,
+        },
+      );
     },
   });
 }
@@ -153,8 +164,13 @@ export function useUpdateWorkLog() {
       if (error) throw error;
       return result;
     },
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["worklogs"] });
+      logAction("update_worklog", "form", "Updated work log", {
+        workLogId: variables.id,
+        title: variables.title,
+        hours: variables.hours,
+      });
     },
   });
 }
@@ -168,8 +184,11 @@ export function useDeleteWorkLog() {
       if (error) throw error;
       return data;
     },
-    onSuccess: () => {
+    onSuccess: (_, id) => {
       queryClient.invalidateQueries({ queryKey: ["worklogs"] });
+      logAction("delete_worklog", "form", "Deleted work log", {
+        workLogId: id,
+      });
     },
   });
 }

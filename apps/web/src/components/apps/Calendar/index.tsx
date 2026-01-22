@@ -68,7 +68,10 @@ const useStyles = makeStyles({
   },
   eventCardOngoing: {
     backgroundColor: tokens.colorBrandBackground2,
-    borderColor: tokens.colorBrandStroke1,
+    borderLeftColor: tokens.colorBrandStroke1,
+    borderRightColor: tokens.colorBrandStroke1,
+    borderTopColor: tokens.colorBrandStroke1,
+    borderBottomColor: tokens.colorBrandStroke1,
     "&:hover": {
       backgroundColor: tokens.colorBrandBackground2Hover,
     },
@@ -172,7 +175,7 @@ const useStyles = makeStyles({
   },
 });
 
-function formatTime(dateTime?: string, date?: string): string {
+function formatTime(dateTime?: string, date?: string): string | undefined {
   if (date) {
     return "All day";
   }
@@ -182,7 +185,7 @@ function formatTime(dateTime?: string, date?: string): string {
       minute: "2-digit",
     });
   }
-  return "";
+  return undefined;
 }
 
 function formatDateRange(event: CalendarEvent): string {

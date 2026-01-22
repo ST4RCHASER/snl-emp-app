@@ -5,6 +5,7 @@ import {
   CalendarLtr24Regular,
   Clock24Regular,
   ChevronRight20Regular,
+  ConferenceRoom24Regular,
 } from "@fluentui/react-icons";
 import { useState } from "react";
 
@@ -16,6 +17,7 @@ interface ContextMenuProps {
   onAddStickyNote: () => void;
   onAddCalendar: () => void;
   onAddClock: () => void;
+  onAddMeetingRoom: () => void;
 }
 
 export function DesktopContextMenu({
@@ -26,6 +28,7 @@ export function DesktopContextMenu({
   onAddStickyNote,
   onAddCalendar,
   onAddClock,
+  onAddMeetingRoom,
 }: ContextMenuProps) {
   const [widgetsSubmenuOpen, setWidgetsSubmenuOpen] = useState(false);
 
@@ -138,6 +141,14 @@ export function DesktopContextMenu({
                 label="Digital Clock"
                 onClick={() => {
                   onAddClock();
+                  onClose();
+                }}
+              />
+              <MenuItem
+                icon={<ConferenceRoom24Regular />}
+                label="Meeting Room"
+                onClick={() => {
+                  onAddMeetingRoom();
                   onClose();
                 }}
               />

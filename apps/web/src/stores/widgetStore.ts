@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-export type WidgetType = "sticky-note" | "calendar" | "clock";
+export type WidgetType = "sticky-note" | "calendar" | "clock" | "meeting-room";
 
 export type CalendarStyle = "month" | "week" | "agenda";
 
@@ -29,7 +29,19 @@ export interface ClockWidget extends BaseWidget {
   is24Hour?: boolean;
 }
 
-export type Widget = StickyNoteWidget | CalendarWidget | ClockWidget;
+export type MeetingRoomType = "inner" | "outer";
+
+export interface MeetingRoomWidget extends BaseWidget {
+  type: "meeting-room";
+  roomType: MeetingRoomType;
+  expanded?: boolean;
+}
+
+export type Widget =
+  | StickyNoteWidget
+  | CalendarWidget
+  | ClockWidget
+  | MeetingRoomWidget;
 
 interface WidgetStore {
   widgets: Widget[];
@@ -41,6 +53,7 @@ interface WidgetStore {
     id: string,
     position: { x: number; y: number },
   ) => void;
+  constrainWidgetsToScreen: () => void;
 }
 
 export const useWidgetStore = create<WidgetStore>((set) => ({
@@ -67,6 +80,55 @@ export const useWidgetStore = create<WidgetStore>((set) => ({
     set((state) => ({
       widgets: state.widgets.map((w) => (w.id === id ? { ...w, position } : w)),
     })),
+
+  constrainWidgetsToScreen: () => {
+    if (typeof window === "undefined") return;
+
+    const screenWidth = window.innerWidth;
+    const screenHeight = window.innerHeight;
+    const taskbarHeight = 48;
+    const minVisiblePortion = 50;
+
+    set((state) => ({
+      widgets: state.widgets.map((w) => {
+        const widgetWidth = w.size?.width || 200;
+        const widgetHeight = w.size?.height || 150;
+
+        let newX = w.position.x;
+        let newY = w.position.y;
+        let needsUpdate = false;
+
+        // Check if widget is too far right
+        if (w.position.x > screenWidth - minVisiblePortion) {
+          newX = screenWidth - widgetWidth - 20;
+          needsUpdate = true;
+        }
+
+        // Check if widget is too far left
+        if (w.position.x + widgetWidth < minVisiblePortion) {
+          newX = 20;
+          needsUpdate = true;
+        }
+
+        // Check if widget is too far down
+        if (w.position.y > screenHeight - taskbarHeight - minVisiblePortion) {
+          newY = screenHeight - taskbarHeight - widgetHeight - 20;
+          needsUpdate = true;
+        }
+
+        // Check if widget is too far up
+        if (w.position.y < 0) {
+          newY = 20;
+          needsUpdate = true;
+        }
+
+        if (needsUpdate) {
+          return { ...w, position: { x: newX, y: newY } };
+        }
+        return w;
+      }),
+    }));
+  },
 }));
 
 // Helper to generate unique widget ID

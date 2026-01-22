@@ -2,8 +2,317 @@ import { Elysia, t } from "elysia";
 import { prisma } from "@snl-emp/db";
 import { authPlugin } from "../auth/plugin.js";
 
+// Meeting room IDs
+const ROOM_IDS = {
+  inner: "c_1887472gl1bvkjsok2o218lns0ip4@resource.calendar.google.com",
+  outer: "c_1882cla4qjt9shoclkd8b11drdmno@resource.calendar.google.com",
+} as const;
+
+const ROOM_NAMES = {
+  inner: "Inner Room",
+  outer: "Outer Room",
+} as const;
+
+// Type for Google Calendar event
+interface GoogleCalendarEvent {
+  id: string;
+  summary?: string;
+  description?: string;
+  start?: { dateTime?: string; date?: string };
+  end?: { dateTime?: string; date?: string };
+  organizer?: { email?: string; displayName?: string };
+  creator?: { email?: string; displayName?: string };
+  attendees?: Array<{
+    email?: string;
+    displayName?: string;
+    responseStatus?: string;
+    resource?: boolean;
+  }>;
+  location?: string;
+}
+
 export const calendarRoutes = new Elysia({ prefix: "/api/calendar" })
   .use(authPlugin)
+
+  // Get meeting room events by looking up the user's calendar
+  .get(
+    "/room-events",
+    async ({ user, set, query }) => {
+      if (!user) {
+        set.status = 401;
+        return { message: "Unauthorized" };
+      }
+
+      const roomType = query.roomType as "inner" | "outer";
+      const roomId = ROOM_IDS[roomType];
+      const roomName = ROOM_NAMES[roomType];
+
+      if (!roomId) {
+        set.status = 400;
+        return { message: "Invalid room type. Use 'inner' or 'outer'" };
+      }
+
+      // Get the user's Google account to retrieve access token
+      const account = await prisma.account.findFirst({
+        where: {
+          userId: user.id,
+          providerId: "google",
+        },
+      });
+
+      if (!account || !account.accessToken) {
+        set.status = 400;
+        return { message: "Google account not linked or no access token" };
+      }
+
+      // Calculate time range for today
+      const now = new Date();
+      const startOfDay = new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate(),
+      );
+      const endOfDay = new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate() + 1,
+      );
+
+      const timeMin = startOfDay.toISOString();
+      const timeMax = endOfDay.toISOString();
+
+      // Helper to fetch calendar events from a specific calendar
+      const fetchCalendarEvents = async (
+        accessToken: string,
+        calendarId: string,
+      ) => {
+        return fetch(
+          `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?` +
+            new URLSearchParams({
+              timeMin,
+              timeMax,
+              singleEvents: "true",
+              orderBy: "startTime",
+              maxResults: "100",
+            }),
+          {
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+            },
+          },
+        );
+      };
+
+      try {
+        // Check if token is expired or will expire soon
+        const tokenExpiry = account.accessTokenExpiresAt;
+        const isTokenExpiringSoon =
+          tokenExpiry &&
+          new Date(tokenExpiry).getTime() < Date.now() + 5 * 60 * 1000;
+
+        let currentAccessToken = account.accessToken;
+
+        // Proactively refresh if token is expiring soon
+        if (isTokenExpiringSoon && account.refreshToken) {
+          const refreshed = await refreshAccessToken(account.refreshToken);
+          if (refreshed) {
+            await prisma.account.update({
+              where: { id: account.id },
+              data: {
+                accessToken: refreshed.access_token,
+                ...(refreshed.expires_in && {
+                  accessTokenExpiresAt: new Date(
+                    Date.now() + refreshed.expires_in * 1000,
+                  ),
+                }),
+              },
+            });
+            currentAccessToken = refreshed.access_token;
+          }
+        }
+
+        // Fetch events from the room's calendar directly
+        let response = await fetchCalendarEvents(currentAccessToken, roomId);
+
+        // If we get a 401, try to refresh the token
+        if (response.status === 401 && account.refreshToken) {
+          const refreshed = await refreshAccessToken(account.refreshToken);
+          if (refreshed) {
+            await prisma.account.update({
+              where: { id: account.id },
+              data: {
+                accessToken: refreshed.access_token,
+                ...(refreshed.expires_in && {
+                  accessTokenExpiresAt: new Date(
+                    Date.now() + refreshed.expires_in * 1000,
+                  ),
+                }),
+              },
+            });
+            currentAccessToken = refreshed.access_token;
+            response = await fetchCalendarEvents(currentAccessToken, roomId);
+          } else {
+            set.status = 401;
+            return { message: "Session expired. Please sign in again." };
+          }
+        }
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          console.error("Google Calendar API error for room:", errorData);
+
+          if (response.status === 404) {
+            set.status = 404;
+            return { message: "Room calendar not found or not accessible" };
+          }
+
+          set.status = response.status;
+          return {
+            message: errorData.error?.message || "Failed to fetch room events",
+          };
+        }
+
+        const roomData = await response.json();
+        const roomEvents = (roomData.items || []) as GoogleCalendarEvent[];
+
+        // Process each room event: get organizer email, fetch their calendar, find matching event
+        const processedEvents: Array<{
+          id: string;
+          summary: string;
+          start: string;
+          end: string;
+          organizer: string;
+          attendeesCount: number;
+        }> = [];
+
+        // Cache for organizer calendars to avoid duplicate fetches
+        const organizerCalendarCache = new Map<string, GoogleCalendarEvent[]>();
+
+        for (const roomEvent of roomEvents) {
+          const startTime =
+            roomEvent.start?.dateTime || roomEvent.start?.date || "";
+          const endTime = roomEvent.end?.dateTime || roomEvent.end?.date || "";
+
+          // Get organizer email from room event (the person who booked the room)
+          const organizerEmail =
+            roomEvent.organizer?.email || roomEvent.creator?.email;
+
+          // Skip if organizer is the room itself or no organizer
+          if (!organizerEmail || organizerEmail.includes("resource.calendar")) {
+            processedEvents.push({
+              id: roomEvent.id,
+              summary: roomEvent.summary || "Busy",
+              start: startTime,
+              end: endTime,
+              organizer: "Reserved",
+              attendeesCount: 1,
+            });
+            continue;
+          }
+
+          // Fetch organizer's calendar (use cache if available)
+          let organizerEvents = organizerCalendarCache.get(organizerEmail);
+
+          if (!organizerEvents) {
+            try {
+              const orgResponse = await fetchCalendarEvents(
+                currentAccessToken,
+                organizerEmail,
+              );
+              if (orgResponse.ok) {
+                const orgData = await orgResponse.json();
+                organizerEvents = (orgData.items ||
+                  []) as GoogleCalendarEvent[];
+                organizerCalendarCache.set(organizerEmail, organizerEvents);
+              }
+            } catch (err) {
+              // If we can't access organizer's calendar, fall back to room event data
+              console.log(`Cannot access calendar for ${organizerEmail}`);
+            }
+          }
+
+          // Find matching event in organizer's calendar by time
+          let matchedEvent: GoogleCalendarEvent | undefined;
+          if (organizerEvents) {
+            matchedEvent = organizerEvents.find((orgEvent) => {
+              const orgStart =
+                orgEvent.start?.dateTime || orgEvent.start?.date || "";
+              const orgEnd = orgEvent.end?.dateTime || orgEvent.end?.date || "";
+              return orgStart === startTime && orgEnd === endTime;
+            });
+          }
+
+          // Use matched event details or fall back to room event
+          const sourceEvent = matchedEvent || roomEvent;
+
+          // Get organizer name
+          let organizerName = organizerEmail.split("@")[0];
+          if (sourceEvent.creator?.displayName) {
+            organizerName = sourceEvent.creator.displayName;
+          } else if (sourceEvent.organizer?.displayName) {
+            organizerName = sourceEvent.organizer.displayName;
+          }
+
+          // Count attendees (exclude resources)
+          const attendeesCount = (sourceEvent.attendees || []).filter(
+            (a) => !a.resource && !a.email?.includes("resource.calendar"),
+          ).length;
+
+          processedEvents.push({
+            id: roomEvent.id,
+            summary: sourceEvent.summary || "Meeting",
+            start: startTime,
+            end: endTime,
+            organizer: organizerName,
+            attendeesCount: Math.max(attendeesCount, 1),
+          });
+        }
+
+        // Sort by start time
+        const events = processedEvents.sort(
+          (a, b) => new Date(a.start).getTime() - new Date(b.start).getTime(),
+        );
+
+        // Determine current status
+        const currentTime = new Date();
+        let currentMeeting = null;
+        let nextMeeting = null;
+
+        for (const event of events) {
+          const start = new Date(event.start);
+          const end = new Date(event.end);
+
+          if (currentTime >= start && currentTime < end) {
+            currentMeeting = event;
+          } else if (currentTime < start && !nextMeeting) {
+            nextMeeting = event;
+          }
+        }
+
+        return {
+          roomType,
+          roomName,
+          events,
+          currentMeeting,
+          nextMeeting,
+          isOccupied: !!currentMeeting,
+        };
+      } catch (error) {
+        console.error("Room Calendar API error:", error);
+        set.status = 500;
+        return { message: "Failed to fetch room events" };
+      }
+    },
+    {
+      query: t.Object({
+        roomType: t.String(),
+      }),
+      detail: {
+        tags: ["Calendar"],
+        summary: "Get meeting room events for today",
+      },
+    },
+  )
 
   // Get calendar events from Google Calendar
   .get(

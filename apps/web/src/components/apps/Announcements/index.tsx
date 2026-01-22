@@ -60,7 +60,10 @@ export default function Announcements() {
   const queryKeys = useMemo(() => [["announcements"]], []);
   useWindowRefresh(queryKeys);
 
-  const { data: announcements, isLoading } = useQuery(announcementQueries.all);
+  const { data: announcementsData, isLoading } = useQuery(
+    announcementQueries.all,
+  );
+  const announcements = announcementsData as Announcement[] | undefined;
 
   const createAnnouncement = useCreateAnnouncement();
   const updateAnnouncement = useUpdateAnnouncement();
@@ -77,14 +80,13 @@ export default function Announcements() {
 
   // Auto-select first announcement for non-HR users and mark as read
   useEffect(() => {
-    const announcementsList = announcements as Announcement[] | undefined;
     if (
       !isHR &&
-      announcementsList &&
-      announcementsList.length > 0 &&
+      announcements &&
+      announcements.length > 0 &&
       !selectedAnnouncement
     ) {
-      const firstAnnouncement = announcementsList[0];
+      const firstAnnouncement = announcements[0];
       setSelectedAnnouncement(firstAnnouncement);
       // Mark the first announcement as read since it's displayed
       if (!firstAnnouncement.isRead) {
@@ -132,9 +134,8 @@ export default function Announcements() {
   };
 
   const handleMoveUp = async (index: number) => {
-    const announcementsList = announcements as Announcement[] | undefined;
-    if (!announcementsList || index === 0) return;
-    const newOrder = [...announcementsList];
+    if (!announcements || index === 0) return;
+    const newOrder = [...announcements];
     [newOrder[index - 1], newOrder[index]] = [
       newOrder[index],
       newOrder[index - 1],
@@ -143,9 +144,8 @@ export default function Announcements() {
   };
 
   const handleMoveDown = async (index: number) => {
-    const announcementsList = announcements as Announcement[] | undefined;
-    if (!announcementsList || index === announcementsList.length - 1) return;
-    const newOrder = [...announcementsList];
+    if (!announcements || index === announcements.length - 1) return;
+    const newOrder = [...announcements];
     [newOrder[index], newOrder[index + 1]] = [
       newOrder[index + 1],
       newOrder[index],
@@ -326,31 +326,29 @@ export default function Announcements() {
         </div>
 
         {/* Mark all as read button */}
-        {!isHR &&
-          announcements &&
-          (announcements as Announcement[]).some((a) => !a.isRead) && (
-            <div
-              style={{
-                padding: "8px 16px",
-                borderBottom: `1px solid ${tokens.colorNeutralStroke1}`,
-              }}
+        {!isHR && announcements && announcements.some((a) => !a.isRead) && (
+          <div
+            style={{
+              padding: "8px 16px",
+              borderBottom: `1px solid ${tokens.colorNeutralStroke1}`,
+            }}
+          >
+            <Button
+              appearance="subtle"
+              size="small"
+              icon={<Checkmark24Regular />}
+              onClick={() => markAllRead.mutate()}
+              style={{ width: "100%" }}
             >
-              <Button
-                appearance="subtle"
-                size="small"
-                icon={<Checkmark24Regular />}
-                onClick={() => markAllRead.mutate()}
-                style={{ width: "100%" }}
-              >
-                Mark all as read
-              </Button>
-            </div>
-          )}
+              Mark all as read
+            </Button>
+          </div>
+        )}
 
         {/* Announcement List */}
         <div style={{ flex: 1, overflow: "auto" }}>
-          {(announcements as Announcement[] | undefined)?.length ? (
-            (announcements as Announcement[]).map((announcement, index) => (
+          {announcements?.length ? (
+            announcements.map((announcement, index) => (
               <div
                 key={announcement.id}
                 onClick={() => handleSelectAnnouncement(announcement)}

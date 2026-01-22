@@ -2,6 +2,7 @@ import { Elysia } from "elysia";
 import { cors } from "@elysiajs/cors";
 import { swagger } from "@elysiajs/swagger";
 import { authPlugin } from "./auth/plugin.js";
+import { logApiRequest } from "./middleware/apiLogger.js";
 import {
   employeeRoutes,
   leaveRoutes,
@@ -13,7 +14,11 @@ import {
   notesRoutes,
   uploadRoutes,
   workLogRoutes,
+  auditRoutes,
 } from "./routes/index.js";
+
+// Store request start times
+const requestTimes = new WeakMap<Request, number>();
 
 export const app = new Elysia()
   .use(
@@ -46,7 +51,19 @@ export const app = new Elysia()
       },
     }),
   )
+  // Global request timing - must be before auth
+  .onRequest(({ request }) => {
+    requestTimes.set(request, Date.now());
+  })
+  // Auth plugin - derives user from session
   .use(authPlugin)
+  // Global API logging after response - now has access to user
+  .onAfterHandle((ctx) => {
+    const { request, set } = ctx;
+    const user = (ctx as unknown as { user?: { id: string } | null }).user;
+    const startTime = requestTimes.get(request);
+    logApiRequest(request, set, startTime, user?.id);
+  })
   .use(employeeRoutes)
   .use(leaveRoutes)
   .use(complaintRoutes)
@@ -57,6 +74,7 @@ export const app = new Elysia()
   .use(notesRoutes)
   .use(uploadRoutes)
   .use(workLogRoutes)
+  .use(auditRoutes)
   .get("/", () => ({
     message: "SNL Employee Management API",
     version: "1.0.0",

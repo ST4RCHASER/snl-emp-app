@@ -12,6 +12,7 @@ import {
   Megaphone24Regular,
   Note24Regular,
   Clock24Regular,
+  DocumentSearch24Regular,
 } from "@fluentui/react-icons";
 import type { AppDefinition } from "../apps/registry";
 
@@ -27,6 +28,7 @@ const iconMap: Record<string, React.ReactNode> = {
   Megaphone: <Megaphone24Regular />,
   Note: <Note24Regular />,
   Clock: <Clock24Regular />,
+  DocumentSearch: <DocumentSearch24Regular />,
 };
 
 interface AppIconProps {

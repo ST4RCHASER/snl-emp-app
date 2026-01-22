@@ -4,6 +4,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { api } from "../client";
+import { logAction } from "./audit";
 
 export interface ComplaintMessage {
   id: string;
@@ -55,8 +56,12 @@ export function useCreateComplaint() {
       if (error) throw error;
       return result;
     },
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["complaints"] });
+      logAction("submit_complaint", "form", "Submitted a complaint", {
+        subject: variables.subject,
+        isAnonymous: variables.isAnonymous,
+      });
     },
   });
 }

@@ -15,7 +15,12 @@ import { AppIcon } from "./AppIcon";
 import { WindowContext } from "./WindowContext";
 import { DesktopContextMenu } from "./DesktopContextMenu";
 import { MobileAppDrawer } from "./MobileAppDrawer";
-import { StickyNoteWidget, CalendarWidget, ClockWidget } from "./widgets";
+import {
+  StickyNoteWidget,
+  CalendarWidget,
+  ClockWidget,
+  MeetingRoomWidget,
+} from "./widgets";
 import {
   preferencesQueries,
   useUpdatePreferences,
@@ -23,6 +28,7 @@ import {
   type IconPositions,
 } from "@/api/queries/preferences";
 import { announcementQueries } from "@/api/queries/announcements";
+import { logAction } from "@/api/queries/audit";
 import { useSystemTheme } from "@/hooks/useSystemTheme";
 import { useMobile } from "@/hooks/useMobile";
 import type { Role } from "@snl-emp/shared";
@@ -42,6 +48,9 @@ export function Desktop() {
   const refreshWindow = useWindowStore((s) => s.refreshWindow);
   const updatePosition = useWindowStore((s) => s.updatePosition);
   const updateSize = useWindowStore((s) => s.updateSize);
+  const constrainWindowsToScreen = useWindowStore(
+    (s) => s.constrainWindowsToScreen,
+  );
 
   // Widget store
   const widgets = useWidgetStore((s) => s.widgets);
@@ -50,6 +59,9 @@ export function Desktop() {
   const updateWidget = useWidgetStore((s) => s.updateWidget);
   const removeWidget = useWidgetStore((s) => s.removeWidget);
   const updateWidgetPosition = useWidgetStore((s) => s.updateWidgetPosition);
+  const constrainWidgetsToScreen = useWidgetStore(
+    (s) => s.constrainWidgetsToScreen,
+  );
 
   // Context menu state
   const [contextMenu, setContextMenu] = useState<{
@@ -62,14 +74,41 @@ export function Desktop() {
   const systemIsDark = useSystemTheme();
   const updatePreferences = useUpdatePreferences();
 
+  // Cast preferences to typed version
+  const prefs = preferences as
+    | {
+        theme?: string;
+        backgroundImage?: string | null;
+        backgroundFit?: string;
+        backgroundColor?: string;
+        guiScale?: number;
+        iconPositions?: IconPositions;
+        widgets?: Widget[];
+      }
+    | undefined;
+
   // Track if widgets have been loaded from preferences
   const widgetsLoadedRef = useRef(false);
 
-  const userRole = (user?.role as Role) || "EMPLOYEE";
+  const userRole =
+    ((user as { role?: string } | undefined)?.role as Role) || "EMPLOYEE";
   const availableApps = getAppsForRole(userRole);
 
   // Track if we've already auto-launched announcements this session
   const hasAutoLaunchedRef = useRef(false);
+
+  // Constrain windows to screen on initial load
+  const hasConstrainedRef = useRef(false);
+  useEffect(() => {
+    if (!hasConstrainedRef.current && windows.length > 0) {
+      // Small delay to ensure window dimensions are available
+      const timer = setTimeout(() => {
+        constrainWindowsToScreen();
+        hasConstrainedRef.current = true;
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [windows.length, constrainWindowsToScreen]);
 
   // Auto-launch announcements app if there are unread announcements
   useEffect(() => {
@@ -93,14 +132,30 @@ export function Desktop() {
 
   // Load widgets from preferences
   useEffect(() => {
-    if (preferences && !widgetsLoadedRef.current) {
-      const savedWidgets = (preferences as { widgets?: Widget[] }).widgets;
+    if (prefs && !widgetsLoadedRef.current) {
+      const savedWidgets = prefs.widgets;
       if (savedWidgets && Array.isArray(savedWidgets)) {
         setWidgets(savedWidgets);
       }
       widgetsLoadedRef.current = true;
     }
-  }, [preferences, setWidgets]);
+  }, [prefs, setWidgets]);
+
+  // Constrain widgets to screen after they are loaded
+  const hasConstrainedWidgetsRef = useRef(false);
+  useEffect(() => {
+    if (
+      widgetsLoadedRef.current &&
+      !hasConstrainedWidgetsRef.current &&
+      widgets.length > 0
+    ) {
+      const timer = setTimeout(() => {
+        constrainWidgetsToScreen();
+        hasConstrainedWidgetsRef.current = true;
+      }, 150);
+      return () => clearTimeout(timer);
+    }
+  }, [widgets.length, constrainWidgetsToScreen]);
 
   // Save widgets to preferences (debounced)
   const saveWidgetsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -117,7 +172,7 @@ export function Desktop() {
   );
 
   // Determine if dark mode based on preference (reserved for future use)
-  const themeSetting = preferences?.theme;
+  const themeSetting = prefs?.theme;
   const _isDarkMode =
     themeSetting === "light"
       ? false
@@ -125,13 +180,153 @@ export function Desktop() {
         ? true
         : systemIsDark;
   void _isDarkMode; // Reserved for future theme support
-  const backgroundImage = preferences?.backgroundImage || DEFAULT_WALLPAPER;
-  const userHasCustomWallpaper = !!preferences?.backgroundImage;
-  const backgroundFit =
-    (preferences?.backgroundFit as BackgroundFit) || "cover";
-  const backgroundColor = preferences?.backgroundColor || "#1a1a1a";
-  const guiScale = preferences?.guiScale || 1.0;
-  const iconPositions = (preferences?.iconPositions as IconPositions) || {};
+  const backgroundImage = prefs?.backgroundImage || DEFAULT_WALLPAPER;
+  const userHasCustomWallpaper = !!prefs?.backgroundImage;
+  const backgroundFit = (prefs?.backgroundFit as BackgroundFit) || "cover";
+  const backgroundColor = prefs?.backgroundColor || "#1a1a1a";
+  const guiScale = prefs?.guiScale || 1.0;
+  const iconPositions = (prefs?.iconPositions as IconPositions) || {};
+
+  // Constrain icon positions on screen resize/reload (avoid overlaps)
+  const hasConstrainedIconsRef = useRef(false);
+  useEffect(() => {
+    if (prefs && !hasConstrainedIconsRef.current) {
+      const screenWidth = window.innerWidth;
+      const screenHeight = window.innerHeight;
+      const taskbarHeight = 48;
+      const gridSize = 90; // Base grid size (unscaled)
+      const margin = 10;
+      const minVisible = 40;
+
+      // Calculate max grid columns and rows
+      const maxCols = Math.max(
+        1,
+        Math.floor((screenWidth - margin) / (gridSize * guiScale)),
+      );
+      const maxRows = Math.max(
+        1,
+        Math.floor(
+          (screenHeight - taskbarHeight - margin) / (gridSize * guiScale),
+        ),
+      );
+
+      let needsUpdate = false;
+      const newPositions: IconPositions = {};
+      const occupiedCells = new Set<string>();
+
+      // Helper to get grid cell key
+      const getCellKey = (col: number, row: number) => `${col},${row}`;
+
+      // Helper to find nearest free cell
+      const findFreeCell = (
+        preferredCol: number,
+        preferredRow: number,
+      ): { col: number; row: number } => {
+        // Clamp preferred to valid range
+        const clampedCol = Math.max(0, Math.min(maxCols - 1, preferredCol));
+        const clampedRow = Math.max(0, Math.min(maxRows - 1, preferredRow));
+
+        // Try clamped position first
+        if (!occupiedCells.has(getCellKey(clampedCol, clampedRow))) {
+          return { col: clampedCol, row: clampedRow };
+        }
+
+        // Search in expanding rings around preferred position
+        for (
+          let radius = 1;
+          radius < Math.max(maxCols, maxRows) * 2;
+          radius++
+        ) {
+          for (let dc = -radius; dc <= radius; dc++) {
+            for (let dr = -radius; dr <= radius; dr++) {
+              if (Math.abs(dc) !== radius && Math.abs(dr) !== radius) continue;
+              const col = clampedCol + dc;
+              const row = clampedRow + dr;
+              if (
+                col >= 0 &&
+                col < maxCols &&
+                row >= 0 &&
+                row < maxRows &&
+                !occupiedCells.has(getCellKey(col, row))
+              ) {
+                return { col, row };
+              }
+            }
+          }
+        }
+
+        // Fallback: find any free cell
+        for (let col = 0; col < maxCols; col++) {
+          for (let row = 0; row < maxRows; row++) {
+            if (!occupiedCells.has(getCellKey(col, row))) {
+              return { col, row };
+            }
+          }
+        }
+
+        return { col: 0, row: 0 };
+      };
+
+      // Process ALL available apps, not just those with saved positions
+      availableApps.forEach((app, index) => {
+        const appId = app.id;
+        const savedPos = iconPositions[appId];
+
+        // Get current position (saved or default)
+        let currentX: number;
+        let currentY: number;
+        if (savedPos) {
+          currentX = savedPos.x;
+          currentY = savedPos.y;
+        } else {
+          // Default position: first column, stacked vertically
+          currentX = margin;
+          currentY = index * gridSize + margin;
+        }
+
+        const scaledX = currentX * guiScale;
+        const scaledY = currentY * guiScale;
+
+        // Calculate current grid cell
+        const currentCol = Math.round(currentX / gridSize);
+        const currentRow = Math.round(currentY / gridSize);
+
+        // Check if icon is out of bounds or cell is already occupied
+        const isOutOfBounds =
+          scaledX > screenWidth - minVisible ||
+          scaledY > screenHeight - taskbarHeight - minVisible ||
+          scaledX < 0 ||
+          scaledY < 0;
+
+        const cellKey = getCellKey(currentCol, currentRow);
+        const isOverlapping = occupiedCells.has(cellKey);
+
+        if (isOutOfBounds || isOverlapping) {
+          // Find a free cell
+          const { col, row } = findFreeCell(currentCol, currentRow);
+          occupiedCells.add(getCellKey(col, row));
+
+          newPositions[appId] = {
+            x: col * gridSize + margin,
+            y: row * gridSize + margin,
+          };
+          needsUpdate = true;
+        } else {
+          // Position is valid, mark as occupied
+          occupiedCells.add(cellKey);
+          if (savedPos) {
+            newPositions[appId] = savedPos;
+          }
+          // If no saved position and not overlapping, don't save (use default)
+        }
+      });
+
+      if (needsUpdate) {
+        updatePreferences.mutate({ iconPositions: newPositions });
+      }
+      hasConstrainedIconsRef.current = true;
+    }
+  }, [prefs, iconPositions, guiScale, updatePreferences, availableApps]);
 
   // On mobile, show the app drawer instead of the desktop
   if (isMobile) {
@@ -193,8 +388,9 @@ export function Desktop() {
 
   // Context menu handlers
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
-    // Only open context menu when clicking on the desktop background
-    if ((e.target as HTMLElement).closest(".desktop") === e.currentTarget) {
+    // Only open context menu when clicking directly on the desktop background
+    // Not when clicking on windows, icons, or widgets
+    if (e.target === e.currentTarget) {
       e.preventDefault();
       setContextMenu({ x: e.clientX, y: e.clientY });
     }
@@ -239,6 +435,18 @@ export function Desktop() {
       showSeconds: false,
       showDate: true,
       is24Hour: false,
+    };
+    addWidget(newWidget);
+    saveWidgets([...widgets, newWidget]);
+  }, [addWidget, contextMenu, saveWidgets, widgets]);
+
+  const handleAddMeetingRoom = useCallback(() => {
+    const newWidget = {
+      id: generateWidgetId(),
+      type: "meeting-room" as const,
+      position: { x: contextMenu?.x || 100, y: contextMenu?.y || 100 },
+      roomType: "inner" as const,
+      expanded: false,
     };
     addWidget(newWidget);
     saveWidgets([...widgets, newWidget]);
@@ -337,10 +545,15 @@ export function Desktop() {
     }
   };
 
-  const handleOpenApp = (appId: string) => {
+  const handleOpenApp = (appId: string, forceNew: boolean = false) => {
     const app = getAppById(appId);
     if (app) {
-      openWindow(appId, app.name, app.defaultSize);
+      openWindow(appId, app.name, app.defaultSize, undefined, forceNew);
+      // Log the app open action
+      logAction("open_app", "app", `Opened ${app.name}`, {
+        appId,
+        appName: app.name,
+      });
     }
   };
 
@@ -375,7 +588,7 @@ export function Desktop() {
             key={app.id}
             app={app}
             position={pos}
-            onClick={() => handleOpenApp(app.id)}
+            onClick={() => handleOpenApp(app.id, true)}
             onDragEnd={(x, y) => handleIconDragEnd(app.id, x, y)}
           />
         );
@@ -416,6 +629,17 @@ export function Desktop() {
             />
           );
         }
+        if (widget.type === "meeting-room") {
+          return (
+            <MeetingRoomWidget
+              key={widget.id}
+              widget={widget}
+              onUpdate={(updates) => handleWidgetUpdate(widget.id, updates)}
+              onRemove={() => handleWidgetRemove(widget.id)}
+              onDragEnd={(pos) => handleWidgetDragEnd(widget.id, pos)}
+            />
+          );
+        }
         return null;
       })}
 
@@ -429,6 +653,7 @@ export function Desktop() {
           onAddStickyNote={handleAddStickyNote}
           onAddCalendar={handleAddCalendar}
           onAddClock={handleAddClock}
+          onAddMeetingRoom={handleAddMeetingRoom}
         />
       )}
 

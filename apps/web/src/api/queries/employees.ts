@@ -4,6 +4,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { api } from "../client";
+import { logAction } from "./audit";
 
 export interface UpdateProfileData {
   fullName?: string;
@@ -76,6 +77,9 @@ export function useUpdateEmployee() {
     onSuccess: (_, { id }) => {
       queryClient.invalidateQueries({ queryKey: ["employees"] });
       queryClient.invalidateQueries({ queryKey: ["employees", id] });
+      logAction("update_employee", "form", "Updated employee details", {
+        employeeId: id,
+      });
     },
   });
 }
@@ -117,6 +121,7 @@ export function useUpdateMyProfile() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["employees"] });
       queryClient.invalidateQueries({ queryKey: ["employees", "me"] });
+      logAction("update_profile", "form", "Updated own profile");
     },
   });
 }
@@ -138,9 +143,13 @@ export function useUpdateUserRole() {
       if (error) throw error;
       return data;
     },
-    onSuccess: (_, { id }) => {
+    onSuccess: (_, { id, role }) => {
       queryClient.invalidateQueries({ queryKey: ["employees"] });
       queryClient.invalidateQueries({ queryKey: ["employees", id] });
+      logAction("update_user_role", "form", `Changed user role to ${role}`, {
+        employeeId: id,
+        newRole: role,
+      });
     },
   });
 }

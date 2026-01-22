@@ -157,6 +157,7 @@ export function Window({
       dragHandleClassName="window-drag-handle"
     >
       <div
+        onContextMenu={(e) => e.stopPropagation()}
         style={{
           width: window.isMaximized ? "100vw" : "100%",
           height: window.isMaximized

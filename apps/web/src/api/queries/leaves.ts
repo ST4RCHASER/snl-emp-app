@@ -1,5 +1,10 @@
-import { queryOptions, useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  queryOptions,
+  useMutation,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { api } from "../client";
+import { logAction } from "./audit";
 
 export const leaveQueries = {
   all: (view?: string) =>
@@ -48,9 +53,19 @@ export function useCreateLeave() {
       if (error) throw error;
       return result;
     },
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["leaves"] });
       queryClient.invalidateQueries({ queryKey: ["leaves", "balance"] });
+      logAction(
+        "submit_leave",
+        "form",
+        `Submitted ${variables.type} leave request`,
+        {
+          type: variables.type,
+          startDate: variables.startDate,
+          endDate: variables.endDate,
+        },
+      );
     },
   });
 }
@@ -64,9 +79,12 @@ export function useCancelLeave() {
       if (error) throw error;
       return data;
     },
-    onSuccess: () => {
+    onSuccess: (_, id) => {
       queryClient.invalidateQueries({ queryKey: ["leaves"] });
       queryClient.invalidateQueries({ queryKey: ["leaves", "balance"] });
+      logAction("cancel_leave", "form", "Cancelled leave request", {
+        leaveId: id,
+      });
     },
   });
 }
@@ -84,13 +102,21 @@ export function useApproveLeave() {
       approved: boolean;
       comment?: string;
     }) => {
-      const { data, error } = await api.api.leaves({ id }).approve.post({ approved, comment });
+      const { data, error } = await api.api
+        .leaves({ id })
+        .approve.post({ approved, comment });
       if (error) throw error;
       return data;
     },
-    onSuccess: (_, { id }) => {
+    onSuccess: (_, { id, approved }) => {
       queryClient.invalidateQueries({ queryKey: ["leaves"] });
       queryClient.invalidateQueries({ queryKey: ["leaves", id] });
+      logAction(
+        approved ? "approve_leave" : "reject_leave",
+        "form",
+        approved ? "Approved leave request" : "Rejected leave request",
+        { leaveId: id },
+      );
     },
   });
 }

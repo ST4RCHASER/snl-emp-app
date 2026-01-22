@@ -7,7 +7,6 @@ import {
   MenuPopover,
   MenuList,
   MenuItem,
-  MenuDivider,
   Tooltip,
   tokens,
 } from "@fluentui/react-components";
@@ -24,6 +23,7 @@ import {
   Megaphone24Regular,
   Note24Regular,
   Clock24Regular,
+  DocumentSearch24Regular,
   Dismiss20Regular,
   Subtract20Regular,
   Maximize20Regular,
@@ -45,6 +45,7 @@ const iconMap: Record<string, React.ReactNode> = {
   notes: <Note24Regular />,
   "work-hours": <Clock24Regular />,
   "team-dashboard": <PeopleTeam24Regular />,
+  "audit-logs": <DocumentSearch24Regular />,
 };
 
 export function Taskbar() {
@@ -214,7 +215,8 @@ export function Taskbar() {
                         marginTop: "0.25rem",
                       }}
                     >
-                      {user?.role || "EMPLOYEE"}
+                      {(user as { role?: string } | undefined)?.role ||
+                        "EMPLOYEE"}
                     </div>
                   </div>
                 </MenuItem>

@@ -1,5 +1,5 @@
 import { Elysia } from "elysia";
-import { auth, type Session } from "./index.js";
+import { auth, type Session, type User } from "./index.js";
 
 export const betterAuthView = new Elysia({ name: "better-auth-view" }).all(
   "/api/auth/*",
@@ -17,7 +17,7 @@ export const authPlugin = new Elysia({ name: "auth-plugin" })
 
     return {
       session: session?.session ?? null,
-      user: session?.user ?? null,
+      user: (session?.user as User | undefined) ?? null,
     };
   })
   .macro(({ onBeforeHandle }) => ({
@@ -27,7 +27,7 @@ export const authPlugin = new Elysia({ name: "auth-plugin" })
         (
           ctx: Record<string, unknown> & {
             session: Session | null;
-            user: Session["user"] | null;
+            user: User | null;
             error: (status: number, body: { message: string }) => Response;
           },
         ) => {
@@ -42,7 +42,7 @@ export const authPlugin = new Elysia({ name: "auth-plugin" })
       onBeforeHandle(
         (
           ctx: Record<string, unknown> & {
-            user: Session["user"] | null;
+            user: User | null;
             error: (status: number, body: { message: string }) => Response;
           },
         ) => {

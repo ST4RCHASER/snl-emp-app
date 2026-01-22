@@ -137,8 +137,9 @@ export default function ComplaintChat() {
   const { user } = useAuth();
   const windowProps = useWindowProps<ComplaintChatProps>();
   const complaintId = windowProps?.complaintId;
+  const userRole = (user as { role?: string } | undefined)?.role;
   const isHR =
-    windowProps?.isHR ?? (user?.role === "HR" || user?.role === "DEVELOPER");
+    windowProps?.isHR ?? (userRole === "HR" || userRole === "DEVELOPER");
 
   if (!complaintId) {
     return (
@@ -190,7 +191,7 @@ function ComplaintChatView({
   // Update status form when complaint loads and clear local state
   const complaintDataKey =
     complaint && "id" in complaint
-      ? `${complaint.id}-${(complaint as { messages?: ComplaintMessage[] }).messages?.length || 0}`
+      ? `${complaint.id}-${(complaint as unknown as { messages?: ComplaintMessage[] }).messages?.length || 0}`
       : null;
 
   useEffect(() => {
@@ -331,12 +332,13 @@ function ComplaintChatView({
     });
 
     if (result && "id" in result) {
+      const resultId = result.id as string;
       // Add to pending ref FIRST (synchronous) to prevent SSE from adding duplicate
-      pendingMessageIdsRef.current.add(result.id);
+      pendingMessageIdsRef.current.add(resultId);
       // Then update the temp ID to real ID
       setLocalMessages((prev) =>
         prev.map((m) =>
-          m.id === tempId ? { ...optimisticMsg, id: result.id } : m,
+          m.id === tempId ? { ...optimisticMsg, id: resultId } : m,
         ),
       );
     }
@@ -374,8 +376,19 @@ function ComplaintChatView({
     );
   }
 
-  const serverMessages =
-    (complaint as { messages?: ComplaintMessage[] }).messages || [];
+  const serverMessages = (
+    (
+      complaint as {
+        messages?: Array<
+          Omit<ComplaintMessage, "createdAt"> & { createdAt: Date | string }
+        >;
+      }
+    ).messages || []
+  ).map((m) => ({
+    ...m,
+    createdAt:
+      typeof m.createdAt === "string" ? m.createdAt : m.createdAt.toISOString(),
+  })) as ComplaintMessage[];
   const allMessages = [
     ...serverMessages,
     ...localMessages.filter(

@@ -24,8 +24,10 @@ import {
 } from "@fluentui/react-icons";
 import { employeeQueries, useUpdateMyProfile } from "@/api/queries/employees";
 import { leaveQueries } from "@/api/queries/leaves";
+import { logAction } from "@/api/queries/audit";
 import { useAuth } from "@/auth/provider";
 import { useWindowRefresh } from "@/components/desktop/WindowContext";
+import { useMobile } from "@/hooks/useMobile";
 
 interface ProfileFormData {
   fullName: string;
@@ -43,6 +45,7 @@ interface ProfileFormData {
 export default function Profile() {
   const { user } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
+  const isMobile = useMobile();
 
   // Refresh data when window refresh button is clicked
   const queryKeys = useMemo(() => [["employees"], ["leaves"]], []);
@@ -94,6 +97,16 @@ export default function Profile() {
   const handleSave = async () => {
     await updateProfile.mutateAsync(form);
     setIsEditing(false);
+    logAction("update_profile", "form", "Updated profile information");
+  };
+
+  const handleEditClick = () => {
+    setIsEditing(true);
+    logAction(
+      "click_edit_profile",
+      "navigation",
+      "Clicked edit profile button",
+    );
   };
 
   if (loadingEmployee || loadingBalance) {
@@ -166,9 +179,9 @@ export default function Profile() {
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "1fr 1fr",
+              gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
               gap: 16,
-              maxWidth: 600,
+              maxWidth: isMobile ? "100%" : 600,
             }}
           >
             <h4
@@ -300,44 +313,69 @@ export default function Profile() {
       <Card>
         <div
           style={{
-            padding: 24,
+            padding: isMobile ? 16 : 24,
             display: "flex",
-            alignItems: "center",
-            gap: 20,
+            flexDirection: isMobile ? "column" : "row",
+            alignItems: isMobile ? "center" : "center",
+            gap: isMobile ? 16 : 20,
+            textAlign: isMobile ? "center" : "left",
           }}
         >
           <Avatar
             name={fullName}
             image={{ src: employeeData?.avatar || user?.image || undefined }}
-            size={96}
+            size={isMobile ? 72 : 96}
             color="colorful"
           />
-          <div style={{ flex: 1 }}>
-            <h2 style={{ margin: 0, marginBottom: 8 }}>{fullName}</h2>
+          <div
+            style={{ flex: 1, minWidth: 0, width: isMobile ? "100%" : "auto" }}
+          >
+            <h2
+              style={{
+                margin: 0,
+                marginBottom: 8,
+                fontSize: isMobile ? 18 : undefined,
+              }}
+            >
+              {fullName}
+            </h2>
             <div
               style={{
                 display: "flex",
                 alignItems: "center",
+                justifyContent: isMobile ? "center" : "flex-start",
                 gap: 8,
                 marginBottom: 8,
               }}
             >
               <Mail24Regular
-                style={{ color: tokens.colorNeutralForeground3 }}
+                style={{ color: tokens.colorNeutralForeground3, flexShrink: 0 }}
               />
-              <span>{user?.email}</span>
+              <span
+                style={{
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {user?.email}
+              </span>
             </div>
             {employeeData && (
               <div
                 style={{
                   display: "flex",
                   alignItems: "center",
+                  justifyContent: isMobile ? "center" : "flex-start",
                   gap: 8,
                   marginBottom: 8,
                 }}
               >
                 <Person24Regular
-                  style={{ color: tokens.colorNeutralForeground3 }}
+                  style={{
+                    color: tokens.colorNeutralForeground3,
+                    flexShrink: 0,
+                  }}
                 />
                 <span>
                   Employee ID: <code>{employeeData.employeeId}</code>
@@ -345,13 +383,16 @@ export default function Profile() {
               </div>
             )}
             <div style={{ marginTop: 8 }}>
-              {getRoleBadge(user?.role || "EMPLOYEE")}
+              {getRoleBadge(
+                (user as { role?: string } | undefined)?.role || "EMPLOYEE",
+              )}
             </div>
           </div>
           <Button
-            appearance="subtle"
+            appearance={isMobile ? "primary" : "subtle"}
             icon={<Edit24Regular />}
-            onClick={() => setIsEditing(true)}
+            onClick={handleEditClick}
+            style={isMobile ? { width: "100%" } : undefined}
           >
             Edit
           </Button>
@@ -368,12 +409,12 @@ export default function Profile() {
               </span>
             }
           />
-          <div style={{ padding: "0 20px 20px" }}>
+          <div style={{ padding: isMobile ? "0 16px 16px" : "0 20px 20px" }}>
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gap: 16,
+                gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
+                gap: isMobile ? 12 : 16,
               }}
             >
               <InfoItem
@@ -443,31 +484,31 @@ export default function Profile() {
               </span>
             }
           />
-          <div style={{ padding: "0 20px 20px" }}>
+          <div style={{ padding: isMobile ? "0 16px 16px" : "0 20px 20px" }}>
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "repeat(2, 1fr)",
-                gap: 16,
+                gridTemplateColumns: isMobile ? "1fr" : "repeat(2, 1fr)",
+                gap: isMobile ? 12 : 16,
               }}
             >
               <BalanceCard
                 label="Personal Leave"
-                used={balance.personal.used}
-                max={balance.personal.max}
-                remaining={balance.personal.remaining}
+                used={balance.personal?.used ?? 0}
+                max={balance.personal?.max ?? 0}
+                remaining={balance.personal?.remaining ?? 0}
               />
               <BalanceCard
                 label="Annual Leave"
-                used={balance.annual.used}
-                max={balance.annual.max}
-                remaining={balance.annual.remaining}
+                used={balance.annual?.used ?? 0}
+                max={balance.annual?.max ?? 0}
+                remaining={balance.annual?.remaining ?? 0}
               />
               <BalanceCard
                 label="Sick Leave"
-                used={balance.sick.used}
-                max={balance.sick.max}
-                remaining={balance.sick.remaining}
+                used={balance.sick?.used ?? 0}
+                max={balance.sick?.max ?? 0}
+                remaining={balance.sick?.remaining ?? 0}
               />
               <BalanceCard
                 label="Birthday Leave"

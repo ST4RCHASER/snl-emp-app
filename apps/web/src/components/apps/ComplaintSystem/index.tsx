@@ -31,6 +31,7 @@ import {
   ArrowLeft24Regular,
   Eye24Regular,
   Checkmark24Regular,
+  Calendar24Regular,
 } from "@fluentui/react-icons";
 import {
   complaintQueries,
@@ -39,11 +40,13 @@ import {
   useUpdateComplaintStatus,
   type ComplaintStatus,
 } from "@/api/queries/complaints";
+import { logAction } from "@/api/queries/audit";
 import { settingsQueries } from "@/api/queries/settings";
 import { useAuth } from "@/auth/provider";
 import { useWindowRefresh } from "@/components/desktop/WindowContext";
 import { useWindowStore } from "@/stores/windowStore";
 import { getAppById } from "../registry";
+import { useMobile } from "@/hooks/useMobile";
 
 type ViewMode = "list" | "create";
 
@@ -77,6 +80,33 @@ export default function ComplaintSystem() {
   const { user } = useAuth();
   const openWindow = useWindowStore((s) => s.openWindow);
 
+  const handleTabChange = (tab: string) => {
+    setActiveTab(tab);
+    logAction(
+      "switch_tab",
+      "navigation",
+      `Switched to ${tab} tab in Complaints`,
+      { tab },
+    );
+  };
+
+  const handleOpenCreateForm = () => {
+    setViewMode("create");
+    logAction(
+      "open_complaint_form",
+      "navigation",
+      "Opened create complaint form",
+    );
+  };
+
+  const handleViewComplaint = (complaint: ComplaintData) => {
+    setSelectedComplaint(complaint);
+    logAction("view_complaint", "navigation", "Viewed complaint details", {
+      complaintId: complaint.id,
+    });
+  };
+  const isMobile = useMobile();
+
   const userRole = (user as { role?: string } | undefined)?.role;
   const isHR = userRole === "HR" || userRole === "DEVELOPER";
 
@@ -91,7 +121,10 @@ export default function ComplaintSystem() {
     true;
 
   const view = activeTab === "all" ? "all" : undefined;
-  const { data: complaints, isLoading } = useQuery(complaintQueries.all(view));
+  const { data: complaintsData, isLoading } = useQuery(
+    complaintQueries.all(view),
+  );
+  const complaints = complaintsData as ComplaintData[] | undefined;
 
   const createComplaint = useCreateComplaint();
   const updateResponse = useUpdateComplaintResponse();
@@ -170,7 +203,7 @@ export default function ComplaintSystem() {
               display: "flex",
               flexDirection: "column",
               gap: 16,
-              maxWidth: 500,
+              maxWidth: isMobile ? "100%" : 500,
             }}
           >
             <Field label="Subject">
@@ -265,13 +298,16 @@ export default function ComplaintSystem() {
       <div
         style={{
           display: "flex",
+          flexDirection: isMobile ? "column" : "row",
           justifyContent: "space-between",
-          alignItems: "center",
+          alignItems: isMobile ? "stretch" : "center",
+          gap: isMobile ? 12 : 0,
         }}
       >
         <TabList
           selectedValue={activeTab}
-          onTabSelect={(_, d) => setActiveTab(d.value as string)}
+          onTabSelect={(_, d) => handleTabChange(d.value as string)}
+          size={isMobile ? "small" : "medium"}
         >
           <Tab value="my-complaints">My Complaints</Tab>
           {isHR && <Tab value="all">All Complaints</Tab>}
@@ -280,28 +316,18 @@ export default function ComplaintSystem() {
         <Button
           appearance="primary"
           icon={<Add24Regular />}
-          onClick={() => setViewMode("create")}
+          onClick={handleOpenCreateForm}
         >
           Submit Complaint
         </Button>
       </div>
 
-      {/* Complaints Table */}
+      {/* Complaints Table (Desktop) / Cards (Mobile) */}
       <div style={{ flex: 1, overflow: "auto" }}>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              {activeTab === "all" && (
-                <TableHeaderCell>Employee</TableHeaderCell>
-              )}
-              <TableHeaderCell>Subject</TableHeaderCell>
-              <TableHeaderCell>Status</TableHeaderCell>
-              <TableHeaderCell>Submitted</TableHeaderCell>
-              <TableHeaderCell>Actions</TableHeaderCell>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {(complaints as ComplaintData[] | undefined)?.map((c) => {
+        {isMobile ? (
+          // Mobile Card View
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {complaints?.map((c) => {
               const getEmployeeName = (): React.ReactNode => {
                 if (c.isAnonymous !== false) {
                   return (
@@ -319,59 +345,178 @@ export default function ComplaintSystem() {
                 );
               };
 
-              const employeeName = getEmployeeName();
-
               return (
-                <TableRow key={c.id}>
-                  {activeTab === "all" && <TableCell>{employeeName}</TableCell>}
-                  <TableCell>
-                    <div style={{ fontWeight: 500 }}>{c.subject}</div>
+                <Card key={c.id} style={{ padding: 12 }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "flex-start",
+                      marginBottom: 8,
+                    }}
+                  >
+                    <div style={{ fontWeight: 500, flex: 1, marginRight: 8 }}>
+                      {c.subject}
+                    </div>
+                    {getStatusBadge(c.status)}
+                  </div>
+
+                  {activeTab === "all" && (
                     <div
                       style={{
                         fontSize: 12,
-                        color: tokens.colorNeutralForeground3,
-                        maxWidth: 300,
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
+                        color: tokens.colorNeutralForeground2,
+                        marginBottom: 4,
                       }}
                     >
-                      {c.description}
+                      {getEmployeeName()}
                     </div>
-                  </TableCell>
-                  <TableCell>{getStatusBadge(c.status)}</TableCell>
-                  <TableCell>
+                  )}
+
+                  <div
+                    style={{
+                      fontSize: 13,
+                      color: tokens.colorNeutralForeground3,
+                      marginBottom: 8,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      display: "-webkit-box",
+                      WebkitLineClamp: 2,
+                      WebkitBoxOrient: "vertical",
+                    }}
+                  >
+                    {c.description}
+                  </div>
+
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                      fontSize: 12,
+                      color: tokens.colorNeutralForeground3,
+                      marginBottom: 8,
+                    }}
+                  >
+                    <Calendar24Regular style={{ fontSize: 14 }} />
                     {new Date(c.createdAt).toLocaleDateString()}
-                  </TableCell>
-                  <TableCell>
-                    <div style={{ display: "flex", gap: 4 }}>
-                      {/* View/Respond button - always show */}
+                  </div>
+
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <Button
+                      appearance="secondary"
+                      size="small"
+                      icon={<Eye24Regular />}
+                      onClick={() => handleViewComplaint(c)}
+                      style={{ flex: 1 }}
+                    >
+                      View
+                    </Button>
+                    {chatEnabled && (
                       <Button
-                        appearance="subtle"
+                        appearance="secondary"
                         size="small"
-                        icon={<Eye24Regular />}
-                        onClick={() => setSelectedComplaint(c)}
+                        icon={<Chat24Regular />}
+                        onClick={() => handleOpenChat(c.id, c.subject)}
+                        style={{ flex: 1 }}
                       >
-                        View
+                        Chat
                       </Button>
-                      {/* Chat button - only if chat is enabled */}
-                      {chatEnabled && (
+                    )}
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
+        ) : (
+          // Desktop Table View
+          <Table>
+            <TableHeader>
+              <TableRow>
+                {activeTab === "all" && (
+                  <TableHeaderCell>Employee</TableHeaderCell>
+                )}
+                <TableHeaderCell>Subject</TableHeaderCell>
+                <TableHeaderCell>Status</TableHeaderCell>
+                <TableHeaderCell>Submitted</TableHeaderCell>
+                <TableHeaderCell>Actions</TableHeaderCell>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {complaints?.map((c) => {
+                const getEmployeeName = (): React.ReactNode => {
+                  if (c.isAnonymous !== false) {
+                    return (
+                      <span style={{ fontStyle: "italic", opacity: 0.7 }}>
+                        Anonymous
+                      </span>
+                    );
+                  }
+                  return (
+                    c.employee?.nickname ||
+                    c.employee?.fullName ||
+                    c.employee?.user?.name ||
+                    c.employee?.user?.email?.split("@")[0] ||
+                    "Unknown"
+                  );
+                };
+
+                const employeeName = getEmployeeName();
+
+                return (
+                  <TableRow key={c.id}>
+                    {activeTab === "all" && (
+                      <TableCell>{employeeName}</TableCell>
+                    )}
+                    <TableCell>
+                      <div style={{ fontWeight: 500 }}>{c.subject}</div>
+                      <div
+                        style={{
+                          fontSize: 12,
+                          color: tokens.colorNeutralForeground3,
+                          maxWidth: 300,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {c.description}
+                      </div>
+                    </TableCell>
+                    <TableCell>{getStatusBadge(c.status)}</TableCell>
+                    <TableCell>
+                      {new Date(c.createdAt).toLocaleDateString()}
+                    </TableCell>
+                    <TableCell>
+                      <div style={{ display: "flex", gap: 4 }}>
+                        {/* View/Respond button - always show */}
                         <Button
                           appearance="subtle"
                           size="small"
-                          icon={<Chat24Regular />}
-                          onClick={() => handleOpenChat(c.id, c.subject)}
+                          icon={<Eye24Regular />}
+                          onClick={() => handleViewComplaint(c)}
                         >
-                          Chat
+                          View
                         </Button>
-                      )}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
+                        {/* Chat button - only if chat is enabled */}
+                        {chatEnabled && (
+                          <Button
+                            appearance="subtle"
+                            size="small"
+                            icon={<Chat24Regular />}
+                            onClick={() => handleOpenChat(c.id, c.subject)}
+                          >
+                            Chat
+                          </Button>
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        )}
 
         {complaints?.length === 0 && (
           <div
@@ -392,6 +537,7 @@ export default function ComplaintSystem() {
           complaint={selectedComplaint}
           isHR={isHR && activeTab === "all"}
           chatEnabled={chatEnabled}
+          isMobile={isMobile}
           onClose={() => setSelectedComplaint(null)}
           onOpenChat={handleOpenChat}
           onUpdateResponse={async (id, response) => {
@@ -412,6 +558,7 @@ function ComplaintDetailDialog({
   complaint,
   isHR,
   chatEnabled,
+  isMobile,
   onClose,
   onOpenChat,
   onUpdateResponse,
@@ -421,6 +568,7 @@ function ComplaintDetailDialog({
   complaint: ComplaintData;
   isHR: boolean;
   chatEnabled: boolean;
+  isMobile: boolean;
   onClose: () => void;
   onOpenChat: (id: string, subject: string) => void;
   onUpdateResponse: (id: string, response: string) => Promise<void>;
@@ -443,7 +591,13 @@ function ComplaintDetailDialog({
 
   return (
     <Dialog open onOpenChange={(_, d) => !d.open && onClose()}>
-      <DialogSurface style={{ maxWidth: 600 }}>
+      <DialogSurface
+        style={
+          isMobile
+            ? { maxWidth: "calc(100vw - 32px)", margin: 16 }
+            : { maxWidth: 600 }
+        }
+      >
         <DialogBody>
           <DialogTitle>{complaint.subject}</DialogTitle>
           <DialogContent>
@@ -550,7 +704,13 @@ function ComplaintDetailDialog({
                   <div style={{ fontWeight: 600, marginBottom: 8 }}>
                     Update Status
                   </div>
-                  <div style={{ display: "flex", gap: 8 }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: 8,
+                      flexWrap: isMobile ? "wrap" : "nowrap",
+                    }}
+                  >
                     <Button
                       appearance={
                         status === "BACKLOG" ? "primary" : "secondary"
@@ -558,6 +718,7 @@ function ComplaintDetailDialog({
                       size="small"
                       onClick={() => handleUpdateStatus("BACKLOG")}
                       disabled={isUpdating}
+                      style={isMobile ? { flex: "1 1 auto" } : undefined}
                     >
                       Backlog
                     </Button>
@@ -568,6 +729,7 @@ function ComplaintDetailDialog({
                       size="small"
                       onClick={() => handleUpdateStatus("IN_PROGRESS")}
                       disabled={isUpdating}
+                      style={isMobile ? { flex: "1 1 auto" } : undefined}
                     >
                       In Progress
                     </Button>
@@ -576,6 +738,7 @@ function ComplaintDetailDialog({
                       size="small"
                       onClick={() => handleUpdateStatus("DONE")}
                       disabled={isUpdating}
+                      style={isMobile ? { flex: "1 1 auto" } : undefined}
                     >
                       Done
                     </Button>
@@ -584,7 +747,9 @@ function ComplaintDetailDialog({
               )}
             </div>
           </DialogContent>
-          <DialogActions>
+          <DialogActions
+            style={isMobile ? { flexDirection: "column", gap: 8 } : undefined}
+          >
             {chatEnabled && (
               <Button
                 appearance="secondary"
@@ -593,6 +758,7 @@ function ComplaintDetailDialog({
                   onClose();
                   onOpenChat(complaint.id, complaint.subject);
                 }}
+                style={isMobile ? { width: "100%" } : undefined}
               >
                 Open Chat
               </Button>
@@ -602,11 +768,16 @@ function ComplaintDetailDialog({
                 appearance="primary"
                 onClick={handleSaveResponse}
                 disabled={isUpdating || !response.trim()}
+                style={isMobile ? { width: "100%" } : undefined}
               >
                 {isUpdating ? "Saving..." : "Save Response"}
               </Button>
             )}
-            <Button appearance="secondary" onClick={onClose}>
+            <Button
+              appearance="secondary"
+              onClick={onClose}
+              style={isMobile ? { width: "100%" } : undefined}
+            >
               Close
             </Button>
           </DialogActions>

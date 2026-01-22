@@ -230,14 +230,22 @@ export default function Settings() {
   }, [settings]);
 
   useEffect(() => {
-    if (preferences) {
+    if (preferences && "theme" in preferences) {
+      const prefs = preferences as {
+        theme?: string;
+        accentColor?: string;
+        backgroundImage?: string | null;
+        backgroundFit?: string;
+        backgroundColor?: string;
+        guiScale?: number;
+      };
       setAppearance({
-        theme: (preferences.theme as "system" | "light" | "dark") || "system",
-        accentColor: preferences.accentColor || "#0078d4",
-        backgroundImage: preferences.backgroundImage || null,
-        backgroundFit: (preferences.backgroundFit as BackgroundFit) || "cover",
-        backgroundColor: preferences.backgroundColor || "#1a1a1a",
-        guiScale: preferences.guiScale || 1.0,
+        theme: (prefs.theme as "system" | "light" | "dark") || "system",
+        accentColor: prefs.accentColor || "#0078d4",
+        backgroundImage: prefs.backgroundImage || null,
+        backgroundFit: (prefs.backgroundFit as BackgroundFit) || "cover",
+        backgroundColor: prefs.backgroundColor || "#1a1a1a",
+        guiScale: prefs.guiScale || 1.0,
       });
     }
   }, [preferences]);

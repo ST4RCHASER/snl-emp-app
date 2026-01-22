@@ -40,6 +40,7 @@ interface WindowStore {
     title: string,
     defaultSize?: { width: number; height: number },
     props?: Record<string, unknown>,
+    forceNew?: boolean,
   ) => string;
   closeWindow: (windowId: string) => void;
   minimizeWindow: (windowId: string) => void;
@@ -55,6 +56,7 @@ interface WindowStore {
     windowId: string,
     size: { width: number; height: number },
   ) => void;
+  constrainWindowsToScreen: () => void;
 }
 
 export const useWindowStore = create<WindowStore>()(
@@ -70,24 +72,27 @@ export const useWindowStore = create<WindowStore>()(
         title,
         defaultSize = { width: 800, height: 600 },
         props,
+        forceNew = false,
       ) => {
-        // Check if window with same appId already exists
-        const existingWindow = get().windows.find((w) => w.appId === appId);
-        if (existingWindow) {
-          // Focus and restore if minimized
-          get().focusWindow(existingWindow.id);
-          if (existingWindow.isMinimized) {
-            get().restoreWindow(existingWindow.id);
+        // Check if window with same appId already exists (unless forceNew is true)
+        if (!forceNew) {
+          const existingWindow = get().windows.find((w) => w.appId === appId);
+          if (existingWindow) {
+            // Focus and restore if minimized
+            get().focusWindow(existingWindow.id);
+            if (existingWindow.isMinimized) {
+              get().restoreWindow(existingWindow.id);
+            }
+            // Update props if provided (e.g., to navigate to a specific section)
+            if (props) {
+              set((state) => ({
+                windows: state.windows.map((w) =>
+                  w.id === existingWindow.id ? { ...w, props } : w,
+                ),
+              }));
+            }
+            return existingWindow.id;
           }
-          // Update props if provided (e.g., to navigate to a specific section)
-          if (props) {
-            set((state) => ({
-              windows: state.windows.map((w) =>
-                w.id === existingWindow.id ? { ...w, props } : w,
-              ),
-            }));
-          }
-          return existingWindow.id;
         }
 
         const id = `${appId}-${Date.now()}`;
@@ -312,6 +317,82 @@ export const useWindowStore = create<WindowStore>()(
             ...state.appSizes,
             [window.appId]: size,
           },
+        }));
+      },
+
+      constrainWindowsToScreen: () => {
+        if (typeof window === "undefined") return;
+
+        const screenWidth = window.innerWidth;
+        const screenHeight = window.innerHeight;
+        const taskbarHeight = 48; // Height of taskbar
+        const minVisiblePortion = 100; // At least 100px of window should be visible
+
+        set((state) => ({
+          windows: state.windows.map((w) => {
+            // Skip maximized windows
+            if (w.isMaximized) return w;
+
+            let newX = w.position.x;
+            let newY = w.position.y;
+            let needsUpdate = false;
+
+            // Check if window is too far right (left edge beyond screen)
+            if (w.position.x > screenWidth - minVisiblePortion) {
+              newX = Math.max(0, screenWidth - minVisiblePortion);
+              needsUpdate = true;
+            }
+
+            // Check if window is too far left (right edge beyond screen)
+            if (w.position.x + w.size.width < minVisiblePortion) {
+              newX = minVisiblePortion - w.size.width;
+              needsUpdate = true;
+            }
+
+            // Check if window is too far down (top edge beyond screen minus taskbar)
+            if (
+              w.position.y >
+              screenHeight - taskbarHeight - minVisiblePortion
+            ) {
+              newY = Math.max(
+                0,
+                screenHeight - taskbarHeight - minVisiblePortion,
+              );
+              needsUpdate = true;
+            }
+
+            // Check if window is too far up (bottom edge beyond top of screen)
+            if (w.position.y + w.size.height < minVisiblePortion) {
+              newY = minVisiblePortion - w.size.height;
+              needsUpdate = true;
+            }
+
+            // Also constrain window size if it's larger than screen
+            let newWidth = w.size.width;
+            let newHeight = w.size.height;
+
+            if (w.size.width > screenWidth) {
+              newWidth = screenWidth - 40;
+              newX = 20;
+              needsUpdate = true;
+            }
+
+            if (w.size.height > screenHeight - taskbarHeight) {
+              newHeight = screenHeight - taskbarHeight - 40;
+              newY = 20;
+              needsUpdate = true;
+            }
+
+            if (needsUpdate) {
+              return {
+                ...w,
+                position: { x: newX, y: newY },
+                size: { width: newWidth, height: newHeight },
+              };
+            }
+
+            return w;
+          }),
         }));
       },
     }),

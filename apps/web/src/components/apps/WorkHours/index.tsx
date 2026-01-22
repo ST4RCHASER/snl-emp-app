@@ -38,9 +38,13 @@ import {
   type WorkLog,
   type WorkLogAudit,
 } from "@/api/queries/worklogs";
+import { logAction } from "@/api/queries/audit";
 import { settingsQueries } from "@/api/queries/settings";
+import { useMobile } from "@/hooks/useMobile";
 
 export default function WorkHours() {
+  const isMobile = useMobile();
+
   const [selectedDate, setSelectedDate] = useState(() => {
     const today = new Date();
     return today.toISOString().split("T")[0];
@@ -105,6 +109,11 @@ export default function WorkHours() {
       newDate.setDate(newDate.getDate() + direction * 7);
       return newDate;
     });
+    logAction(
+      "navigate_week",
+      "navigation",
+      `Navigated ${direction > 0 ? "next" : "previous"} week in Work Logs`,
+    );
   };
 
   const goToToday = () => {
@@ -113,6 +122,21 @@ export default function WorkHours() {
     const diff = today.getDate() - day + (day === 0 ? -6 : 1);
     setCurrentWeekStart(new Date(today.setDate(diff)));
     setSelectedDate(new Date().toISOString().split("T")[0]);
+    logAction(
+      "go_to_today",
+      "navigation",
+      "Navigated to current week in Work Logs",
+    );
+  };
+
+  const handleSelectDate = (dateStr: string) => {
+    setSelectedDate(dateStr);
+    logAction(
+      "select_date",
+      "navigation",
+      `Selected date ${dateStr} in Work Logs`,
+      { date: dateStr },
+    );
   };
 
   const selectedDateLogs = logsByDate[selectedDate] || [];
@@ -124,20 +148,26 @@ export default function WorkHours() {
         display: "flex",
         flexDirection: "column",
         height: "100%",
-        padding: 16,
-        gap: 16,
+        padding: isMobile ? 12 : 16,
+        gap: isMobile ? 12 : 16,
       }}
     >
       {/* Header */}
       <div
         style={{
           display: "flex",
-          alignItems: "center",
+          flexDirection: isMobile ? "column" : "row",
+          alignItems: isMobile ? "stretch" : "center",
           justifyContent: "space-between",
+          gap: isMobile ? 12 : 0,
         }}
       >
-        <h2 style={{ margin: 0, fontSize: 20, fontWeight: 600 }}>Work Logs</h2>
-        <AddWorkLogDialog date={selectedDate} />
+        <h2
+          style={{ margin: 0, fontSize: isMobile ? 18 : 20, fontWeight: 600 }}
+        >
+          Work Logs
+        </h2>
+        <AddWorkLogDialog date={selectedDate} isMobile={isMobile} />
       </div>
 
       {/* Week Navigation */}
@@ -145,19 +175,32 @@ export default function WorkHours() {
         style={{
           display: "flex",
           alignItems: "center",
-          gap: 12,
+          gap: isMobile ? 8 : 12,
           justifyContent: "center",
+          flexWrap: isMobile ? "wrap" : "nowrap",
         }}
       >
         <Button
           appearance="subtle"
           icon={<ChevronLeft24Regular />}
           onClick={() => navigateWeek(-1)}
+          size={isMobile ? "small" : "medium"}
         />
-        <Button appearance="secondary" onClick={goToToday}>
+        <Button
+          appearance="secondary"
+          onClick={goToToday}
+          size={isMobile ? "small" : "medium"}
+        >
           Today
         </Button>
-        <span style={{ minWidth: 200, textAlign: "center", fontWeight: 500 }}>
+        <span
+          style={{
+            minWidth: isMobile ? "auto" : 200,
+            textAlign: "center",
+            fontWeight: 500,
+            fontSize: isMobile ? 13 : 14,
+          }}
+        >
           {weekDates[0].toLocaleDateString("en-US", {
             month: "short",
             day: "numeric",
@@ -173,6 +216,7 @@ export default function WorkHours() {
           appearance="subtle"
           icon={<ChevronRight24Regular />}
           onClick={() => navigateWeek(1)}
+          size={isMobile ? "small" : "medium"}
         />
       </div>
 
@@ -180,8 +224,12 @@ export default function WorkHours() {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(7, 1fr)",
-          gap: 8,
+          gridTemplateColumns: isMobile
+            ? "repeat(7, minmax(44px, 1fr))"
+            : "repeat(7, 1fr)",
+          gap: isMobile ? 4 : 8,
+          overflowX: isMobile ? "auto" : "visible",
+          paddingBottom: isMobile ? 4 : 0,
         }}
       >
         {weekDates.map((date) => {
@@ -212,10 +260,10 @@ export default function WorkHours() {
           return (
             <div
               key={dateKey}
-              onClick={() => setSelectedDate(dateKey)}
+              onClick={() => handleSelectDate(dateKey)}
               style={{
-                padding: 12,
-                borderRadius: 8,
+                padding: isMobile ? 8 : 12,
+                borderRadius: isMobile ? 6 : 8,
                 cursor: "pointer",
                 background: isSelected
                   ? isOvertime
@@ -232,18 +280,21 @@ export default function WorkHours() {
                     : "2px solid transparent",
                 textAlign: "center",
                 transition: "all 0.15s",
+                minWidth: isMobile ? 44 : "auto",
               }}
             >
-              <div style={{ fontSize: 11, opacity: 0.7 }}>
-                {date.toLocaleDateString("en-US", { weekday: "short" })}
+              <div style={{ fontSize: isMobile ? 10 : 11, opacity: 0.7 }}>
+                {date.toLocaleDateString("en-US", {
+                  weekday: isMobile ? "narrow" : "short",
+                })}
               </div>
-              <div style={{ fontSize: 18, fontWeight: 600 }}>
+              <div style={{ fontSize: isMobile ? 14 : 18, fontWeight: 600 }}>
                 {date.getDate()}
               </div>
               <div
                 style={{
-                  marginTop: 8,
-                  height: 4,
+                  marginTop: isMobile ? 4 : 8,
+                  height: isMobile ? 3 : 4,
                   background: isSelected
                     ? "rgba(255,255,255,0.3)"
                     : tokens.colorNeutralBackground5,
@@ -262,15 +313,15 @@ export default function WorkHours() {
               </div>
               <div
                 style={{
-                  fontSize: 11,
-                  marginTop: 4,
+                  fontSize: isMobile ? 10 : 11,
+                  marginTop: isMobile ? 2 : 4,
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
                   gap: 2,
                 }}
               >
-                {isOvertime && (
+                {isOvertime && !isMobile && (
                   <Warning16Regular
                     style={{
                       color: isSelected ? "#fef08a" : "#ef4444",
@@ -290,15 +341,19 @@ export default function WorkHours() {
         <div
           style={{
             display: "flex",
-            alignItems: "center",
+            flexDirection: isMobile ? "column" : "row",
+            alignItems: isMobile ? "flex-start" : "center",
             justifyContent: "space-between",
             marginBottom: 12,
+            gap: isMobile ? 8 : 0,
           }}
         >
-          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600 }}>
+          <h3
+            style={{ margin: 0, fontSize: isMobile ? 14 : 16, fontWeight: 600 }}
+          >
             {new Date(selectedDate).toLocaleDateString("en-US", {
-              weekday: "long",
-              month: "long",
+              weekday: isMobile ? "short" : "long",
+              month: isMobile ? "short" : "long",
               day: "numeric",
             })}
           </h3>
@@ -343,7 +398,7 @@ export default function WorkHours() {
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {selectedDateLogs.map((log) => (
-              <WorkLogCard key={log.id} log={log} />
+              <WorkLogCard key={log.id} log={log} isMobile={isMobile} />
             ))}
           </div>
         )}
@@ -352,7 +407,7 @@ export default function WorkHours() {
   );
 }
 
-function WorkLogCard({ log }: { log: WorkLog }) {
+function WorkLogCard({ log, isMobile }: { log: WorkLog; isMobile: boolean }) {
   const deleteLog = useDeleteWorkLog();
   const [editOpen, setEditOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -423,6 +478,7 @@ function WorkLogCard({ log }: { log: WorkLog }) {
             log={log}
             open={historyOpen}
             onOpenChange={setHistoryOpen}
+            isMobile={isMobile}
           />
           {/* Only show edit/delete if not already deleted */}
           {!isDeleted && (
@@ -431,6 +487,7 @@ function WorkLogCard({ log }: { log: WorkLog }) {
                 log={log}
                 open={editOpen}
                 onOpenChange={setEditOpen}
+                isMobile={isMobile}
               />
               <Button
                 appearance="subtle"
@@ -453,9 +510,11 @@ function WorkLogCard({ log }: { log: WorkLog }) {
 function AddWorkLogDialog({
   date,
   trigger = "button",
+  isMobile = false,
 }: {
   date: string;
   trigger?: "button" | "link";
+  isMobile?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
@@ -490,7 +549,11 @@ function AddWorkLogDialog({
     <Dialog open={open} onOpenChange={(_, d) => setOpen(d.open)}>
       <DialogTrigger disableButtonEnhancement>
         {trigger === "button" ? (
-          <Button appearance="primary" icon={<Add24Regular />}>
+          <Button
+            appearance="primary"
+            icon={<Add24Regular />}
+            style={isMobile ? { width: "100%" } : undefined}
+          >
             Add Work
           </Button>
         ) : (
@@ -499,7 +562,11 @@ function AddWorkLogDialog({
           </Button>
         )}
       </DialogTrigger>
-      <DialogSurface>
+      <DialogSurface
+        style={
+          isMobile ? { maxWidth: "calc(100vw - 32px)", margin: 16 } : undefined
+        }
+      >
         <DialogBody>
           <DialogTitle>Add Work Log</DialogTitle>
           <DialogContent
@@ -520,7 +587,13 @@ function AddWorkLogDialog({
                 rows={3}
               />
             </Field>
-            <div style={{ display: "flex", gap: 16 }}>
+            <div
+              style={{
+                display: "flex",
+                flexDirection: isMobile ? "column" : "row",
+                gap: isMobile ? 12 : 16,
+              }}
+            >
               <Field label="Hours" required style={{ flex: 1 }}>
                 <Input
                   type="number"
@@ -542,14 +615,21 @@ function AddWorkLogDialog({
               </Field>
             </div>
           </DialogContent>
-          <DialogActions>
-            <Button appearance="secondary" onClick={() => setOpen(false)}>
+          <DialogActions
+            style={isMobile ? { flexDirection: "column", gap: 8 } : undefined}
+          >
+            <Button
+              appearance="secondary"
+              onClick={() => setOpen(false)}
+              style={isMobile ? { width: "100%" } : undefined}
+            >
               Cancel
             </Button>
             <Button
               appearance="primary"
               onClick={handleSubmit}
               disabled={!title.trim() || !hours || createLog.isPending}
+              style={isMobile ? { width: "100%" } : undefined}
             >
               {createLog.isPending ? "Adding..." : "Add"}
             </Button>
@@ -564,10 +644,12 @@ function EditWorkLogDialog({
   log,
   open,
   onOpenChange,
+  isMobile,
 }: {
   log: WorkLog;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  isMobile: boolean;
 }) {
   const [title, setTitle] = useState(log.title);
   const [description, setDescription] = useState(log.description || "");
@@ -597,7 +679,11 @@ function EditWorkLogDialog({
       <DialogTrigger disableButtonEnhancement>
         <Button appearance="subtle" size="small" icon={<Edit24Regular />} />
       </DialogTrigger>
-      <DialogSurface>
+      <DialogSurface
+        style={
+          isMobile ? { maxWidth: "calc(100vw - 32px)", margin: 16 } : undefined
+        }
+      >
         <DialogBody>
           <DialogTitle>Edit Work Log</DialogTitle>
           <DialogContent
@@ -618,7 +704,13 @@ function EditWorkLogDialog({
                 rows={3}
               />
             </Field>
-            <div style={{ display: "flex", gap: 16 }}>
+            <div
+              style={{
+                display: "flex",
+                flexDirection: isMobile ? "column" : "row",
+                gap: isMobile ? 12 : 16,
+              }}
+            >
               <Field label="Hours" required style={{ flex: 1 }}>
                 <Input
                   type="number"
@@ -640,14 +732,21 @@ function EditWorkLogDialog({
               </Field>
             </div>
           </DialogContent>
-          <DialogActions>
-            <Button appearance="secondary" onClick={() => onOpenChange(false)}>
+          <DialogActions
+            style={isMobile ? { flexDirection: "column", gap: 8 } : undefined}
+          >
+            <Button
+              appearance="secondary"
+              onClick={() => onOpenChange(false)}
+              style={isMobile ? { width: "100%" } : undefined}
+            >
               Cancel
             </Button>
             <Button
               appearance="primary"
               onClick={handleSubmit}
               disabled={!title.trim() || !hours || updateLog.isPending}
+              style={isMobile ? { width: "100%" } : undefined}
             >
               {updateLog.isPending ? "Saving..." : "Save"}
             </Button>
@@ -662,10 +761,12 @@ function AuditHistoryDialog({
   log,
   open,
   onOpenChange,
+  isMobile,
 }: {
   log: WorkLog;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  isMobile: boolean;
 }) {
   const auditLogs = log.auditLogs || [];
 
@@ -745,7 +846,11 @@ function AuditHistoryDialog({
           />
         </Tooltip>
       </DialogTrigger>
-      <DialogSurface>
+      <DialogSurface
+        style={
+          isMobile ? { maxWidth: "calc(100vw - 32px)", margin: 16 } : undefined
+        }
+      >
         <DialogBody>
           <DialogTitle>Audit History</DialogTitle>
           <DialogContent>

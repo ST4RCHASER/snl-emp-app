@@ -451,3 +451,61 @@ model NoteFolder {
   @@index([userId])
   @@map("note_folders")
 }
+
+// ==================== AUDIT LOG SYSTEM (Developer Only) ====================
+
+model ActionLog {
+  id     String @id @default(cuid())
+  userId String?
+
+  // Action details
+  action      String   // e.g., "sign_in", "sign_out", "open_app", "click", "submit", "browse"
+  category    String   // e.g., "auth", "app", "navigation", "form"
+  description String?  // Human-readable description
+  metadata    Json?    // Additional context (app name, button clicked, etc.)
+
+  // Client info
+  ipAddress   String?
+  userAgent   String?
+  sessionId   String?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([action])
+  @@index([category])
+  @@index([createdAt])
+  @@map("action_logs")
+}
+
+model ApiLog {
+  id     String @id @default(cuid())
+  userId String?
+
+  // Request details
+  method   String   // GET, POST, PUT, DELETE, etc.
+  path     String   // API endpoint path
+  query    Json?    // Query parameters
+  body     Json?    // Request body (sanitized - no passwords)
+  headers  Json?    // Request headers (sanitized)
+
+  // Response details
+  statusCode   Int
+  responseTime Int      // Response time in milliseconds
+  responseSize Int?     // Response size in bytes
+  error        String?  // Error message if any
+
+  // Client info
+  ipAddress String?
+  userAgent String?
+  sessionId String?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([method])
+  @@index([path])
+  @@index([statusCode])
+  @@index([createdAt])
+  @@map("api_logs")
+}

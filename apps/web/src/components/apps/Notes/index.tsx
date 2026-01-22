@@ -106,10 +106,25 @@ export default function Notes() {
   const queryKeys = useMemo(() => [["notes"], ["notes", "folders"]], []);
   useWindowRefresh(queryKeys);
 
+  // Cast notes data to proper type
+  const notesList = useMemo(() => {
+    if (!notes || !Array.isArray(notes)) return [];
+    return (notes as unknown as Note[]).map((note) => ({
+      ...note,
+      createdAt:
+        typeof note.createdAt === "string"
+          ? note.createdAt
+          : String(note.createdAt),
+      updatedAt:
+        typeof note.updatedAt === "string"
+          ? note.updatedAt
+          : String(note.updatedAt),
+    })) as Note[];
+  }, [notes]);
+
   // Filter notes by search query
   const filteredNotes = useMemo(() => {
-    if (!notes) return [];
-    const notesList = notes as Note[];
+    if (!notesList.length) return [];
     if (!searchQuery) return notesList;
     const query = searchQuery.toLowerCase();
     return notesList.filter(
@@ -117,7 +132,7 @@ export default function Notes() {
         note.title.toLowerCase().includes(query) ||
         note.content.toLowerCase().includes(query),
     );
-  }, [notes, searchQuery]);
+  }, [notesList, searchQuery]);
 
   // Auto-save note content with debounce
   const handleNoteChange = useCallback(
@@ -169,7 +184,7 @@ export default function Notes() {
         sidebarView === "folder" ? selectedFolderId || undefined : undefined,
     });
     if (newNote && "id" in newNote) {
-      setSelectedNote(newNote as Note);
+      setSelectedNote(newNote as unknown as Note);
     }
   };
 
@@ -231,6 +246,12 @@ export default function Notes() {
 
   const isLoading = notesLoading || foldersLoading;
 
+  const foldersList = useMemo(() => {
+    if (!folders || !Array.isArray(folders)) return [];
+    return folders as unknown as Folder[];
+  }, [folders]);
+  const allNotesCount = notesList.length;
+
   if (isLoading) {
     return (
       <div style={{ display: "flex", justifyContent: "center", padding: 40 }}>
@@ -238,9 +259,6 @@ export default function Notes() {
       </div>
     );
   }
-
-  const foldersList = (folders || []) as Folder[];
-  const allNotesCount = (notes as Note[])?.length || 0;
 
   return (
     <div

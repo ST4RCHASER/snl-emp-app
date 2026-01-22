@@ -28,11 +28,19 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
   });
   const systemIsDark = useSystemTheme();
 
+  // Cast preferences to typed version
+  const prefs = preferences as
+    | {
+        theme?: string;
+        accentColor?: string;
+        guiScale?: number;
+      }
+    | undefined;
+
   // Get values from database preferences or use defaults
-  const theme =
-    (preferences?.theme as "system" | "light" | "dark") || DEFAULT_THEME;
-  const accentColor = preferences?.accentColor || DEFAULT_ACCENT;
-  const guiScale = preferences?.guiScale || DEFAULT_GUI_SCALE;
+  const theme = (prefs?.theme as "system" | "light" | "dark") || DEFAULT_THEME;
+  const accentColor = prefs?.accentColor || DEFAULT_ACCENT;
+  const guiScale = prefs?.guiScale || DEFAULT_GUI_SCALE;
 
   // Apply GUI scale to document root
   useEffect(() => {

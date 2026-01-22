@@ -26,6 +26,7 @@ import {
   Checkmark24Regular,
   Dismiss24Regular,
   ArrowLeft24Regular,
+  Calendar24Regular,
 } from "@fluentui/react-icons";
 import {
   leaveQueries,
@@ -33,16 +34,39 @@ import {
   useApproveLeave,
   useCancelLeave,
 } from "@/api/queries/leaves";
+import { logAction } from "@/api/queries/audit";
 import { useAuth } from "@/auth/provider";
 import { useWindowRefresh } from "@/components/desktop/WindowContext";
+import { useMobile } from "@/hooks/useMobile";
 
 export default function LeaveManagement() {
   const [activeTab, setActiveTab] = useState<string>("my-leaves");
   const [showCreateForm, setShowCreateForm] = useState(false);
   const { user } = useAuth();
+  const isMobile = useMobile();
 
-  const isManager = user?.role === "MANAGEMENT" || user?.role === "DEVELOPER";
-  const isHR = user?.role === "HR" || user?.role === "DEVELOPER";
+  const handleTabChange = (tab: string) => {
+    setActiveTab(tab);
+    logAction(
+      "switch_tab",
+      "navigation",
+      `Switched to ${tab} tab in Leave Management`,
+      { tab },
+    );
+  };
+
+  const handleOpenCreateForm = () => {
+    setShowCreateForm(true);
+    logAction(
+      "open_leave_form",
+      "navigation",
+      "Opened create leave request form",
+    );
+  };
+
+  const userRole = (user as { role?: string } | undefined)?.role;
+  const isManager = userRole === "MANAGEMENT" || userRole === "DEVELOPER";
+  const isHR = userRole === "HR" || userRole === "DEVELOPER";
 
   const view =
     activeTab === "pending-approval"
@@ -55,7 +79,19 @@ export default function LeaveManagement() {
   const queryKeys = useMemo(() => [["leaves"]], []);
   useWindowRefresh(queryKeys);
 
-  const { data: leaves, isLoading } = useQuery(leaveQueries.all(view));
+  const { data: leavesData, isLoading } = useQuery(leaveQueries.all(view));
+  const leaves = leavesData as
+    | Array<{
+        id: string;
+        type: string;
+        reason: string;
+        startDate: string;
+        endDate: string;
+        status: string;
+        isHalfDay: boolean;
+        employee: { user: { name: string | null; email: string } };
+      }>
+    | undefined;
   const { data: balance } = useQuery(leaveQueries.balance);
 
   const createLeave = useCreateLeave();
@@ -142,7 +178,7 @@ export default function LeaveManagement() {
               display: "flex",
               flexDirection: "column",
               gap: 16,
-              maxWidth: 400,
+              maxWidth: isMobile ? "100%" : 400,
             }}
           >
             <Field label="Leave Type">
@@ -258,28 +294,70 @@ export default function LeaveManagement() {
     >
       {/* Leave Balance Cards */}
       {balance && (
-        <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-          <Card size="small" style={{ flex: "1 1 120px", minWidth: 120 }}>
+        <div
+          style={{ display: "flex", gap: isMobile ? 8 : 12, flexWrap: "wrap" }}
+        >
+          <Card
+            size="small"
+            style={{
+              flex: "1 1 auto",
+              minWidth: isMobile ? "calc(50% - 4px)" : 120,
+            }}
+          >
             <CardHeader
-              header={<span style={{ fontWeight: 600 }}>Personal</span>}
-              description={`${balance.personal.remaining} / ${balance.personal.max}`}
+              header={
+                <span style={{ fontWeight: 600, fontSize: isMobile ? 12 : 14 }}>
+                  Personal
+                </span>
+              }
+              description={`${balance.personal?.remaining ?? 0} / ${balance.personal?.max ?? 0}`}
             />
           </Card>
-          <Card size="small" style={{ flex: "1 1 120px", minWidth: 120 }}>
+          <Card
+            size="small"
+            style={{
+              flex: "1 1 auto",
+              minWidth: isMobile ? "calc(50% - 4px)" : 120,
+            }}
+          >
             <CardHeader
-              header={<span style={{ fontWeight: 600 }}>Annual</span>}
-              description={`${balance.annual.remaining} / ${balance.annual.max}`}
+              header={
+                <span style={{ fontWeight: 600, fontSize: isMobile ? 12 : 14 }}>
+                  Annual
+                </span>
+              }
+              description={`${balance.annual?.remaining ?? 0} / ${balance.annual?.max ?? 0}`}
             />
           </Card>
-          <Card size="small" style={{ flex: "1 1 120px", minWidth: 120 }}>
+          <Card
+            size="small"
+            style={{
+              flex: "1 1 auto",
+              minWidth: isMobile ? "calc(50% - 4px)" : 120,
+            }}
+          >
             <CardHeader
-              header={<span style={{ fontWeight: 600 }}>Sick</span>}
-              description={`${balance.sick.remaining} / ${balance.sick.max}`}
+              header={
+                <span style={{ fontWeight: 600, fontSize: isMobile ? 12 : 14 }}>
+                  Sick
+                </span>
+              }
+              description={`${balance.sick?.remaining ?? 0} / ${balance.sick?.max ?? 0}`}
             />
           </Card>
-          <Card size="small" style={{ flex: "1 1 120px", minWidth: 120 }}>
+          <Card
+            size="small"
+            style={{
+              flex: "1 1 auto",
+              minWidth: isMobile ? "calc(50% - 4px)" : 120,
+            }}
+          >
             <CardHeader
-              header={<span style={{ fontWeight: 600 }}>Birthday</span>}
+              header={
+                <span style={{ fontWeight: 600, fontSize: isMobile ? 12 : 14 }}>
+                  Birthday
+                </span>
+              }
               description={`${balance.birthday?.remaining ?? 1} / ${balance.birthday?.max ?? 1}`}
             />
           </Card>
@@ -290,124 +368,240 @@ export default function LeaveManagement() {
       <div
         style={{
           display: "flex",
+          flexDirection: isMobile ? "column" : "row",
           justifyContent: "space-between",
-          alignItems: "center",
+          alignItems: isMobile ? "stretch" : "center",
+          gap: isMobile ? 12 : 0,
         }}
       >
         <TabList
           selectedValue={activeTab}
-          onTabSelect={(_, d) => setActiveTab(d.value as string)}
+          onTabSelect={(_, d) => handleTabChange(d.value as string)}
+          size={isMobile ? "small" : "medium"}
         >
           <Tab value="my-leaves">My Leaves</Tab>
-          {isManager && <Tab value="pending-approval">Pending Approval</Tab>}
+          {isManager && (
+            <Tab value="pending-approval">
+              {isMobile ? "Pending" : "Pending Approval"}
+            </Tab>
+          )}
           {isHR && <Tab value="all">All Leaves</Tab>}
         </TabList>
 
         <Button
           appearance="primary"
           icon={<Add24Regular />}
-          onClick={() => setShowCreateForm(true)}
+          onClick={handleOpenCreateForm}
         >
           Request Leave
         </Button>
       </div>
 
-      {/* Leave Table */}
+      {/* Leave Table (Desktop) / Cards (Mobile) */}
       <div style={{ flex: 1, overflow: "auto" }}>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              {activeTab !== "my-leaves" && (
-                <TableHeaderCell>Employee</TableHeaderCell>
-              )}
-              <TableHeaderCell>Type</TableHeaderCell>
-              <TableHeaderCell>Dates</TableHeaderCell>
-              <TableHeaderCell>Reason</TableHeaderCell>
-              <TableHeaderCell>Status</TableHeaderCell>
-              <TableHeaderCell>Actions</TableHeaderCell>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
+        {isMobile ? (
+          // Mobile Card View
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             {leaves?.map((leave) => (
-              <TableRow key={leave.id}>
-                {activeTab !== "my-leaves" && (
-                  <TableCell>
-                    {leave.employee.user.name || leave.employee.user.email}
-                  </TableCell>
-                )}
-                <TableCell>
-                  <Badge appearance="outline">{leave.type}</Badge>
-                  {leave.isHalfDay && (
-                    <Badge
-                      appearance="tint"
-                      color="informative"
-                      style={{ marginLeft: 4 }}
-                    >
-                      Half Day
-                    </Badge>
-                  )}
-                </TableCell>
-                <TableCell>
-                  {new Date(leave.startDate).toLocaleDateString()} -{" "}
-                  {new Date(leave.endDate).toLocaleDateString()}
-                </TableCell>
-                <TableCell
+              <Card key={leave.id} style={{ padding: 12 }}>
+                <div
                   style={{
-                    maxWidth: 200,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "flex-start",
+                    marginBottom: 8,
                   }}
                 >
-                  {leave.reason}
-                </TableCell>
-                <TableCell>{getStatusBadge(leave.status)}</TableCell>
-                <TableCell>
-                  {leave.status === "PENDING" && activeTab === "my-leaves" && (
-                    <Button
-                      appearance="subtle"
-                      size="small"
-                      icon={<Dismiss24Regular />}
-                      onClick={() => cancelLeave.mutate(leave.id)}
-                    >
-                      Cancel
-                    </Button>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    <Badge appearance="outline">{leave.type}</Badge>
+                    {leave.isHalfDay && (
+                      <Badge appearance="tint" color="informative">
+                        Half Day
+                      </Badge>
+                    )}
+                  </div>
+                  {getStatusBadge(leave.status)}
+                </div>
+
+                {activeTab !== "my-leaves" && (
+                  <div
+                    style={{ fontSize: 13, fontWeight: 500, marginBottom: 4 }}
+                  >
+                    {leave.employee.user.name || leave.employee.user.email}
+                  </div>
+                )}
+
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    fontSize: 13,
+                    color: tokens.colorNeutralForeground2,
+                    marginBottom: 4,
+                  }}
+                >
+                  <Calendar24Regular style={{ fontSize: 16 }} />
+                  {new Date(leave.startDate).toLocaleDateString()} -{" "}
+                  {new Date(leave.endDate).toLocaleDateString()}
+                </div>
+
+                {leave.reason && (
+                  <div
+                    style={{
+                      fontSize: 13,
+                      color: tokens.colorNeutralForeground3,
+                      marginBottom: 8,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      display: "-webkit-box",
+                      WebkitLineClamp: 2,
+                      WebkitBoxOrient: "vertical",
+                    }}
+                  >
+                    {leave.reason}
+                  </div>
+                )}
+
+                {leave.status === "PENDING" && activeTab === "my-leaves" && (
+                  <Button
+                    appearance="subtle"
+                    size="small"
+                    icon={<Dismiss24Regular />}
+                    onClick={() => cancelLeave.mutate(leave.id)}
+                    style={{ marginTop: 4 }}
+                  >
+                    Cancel Request
+                  </Button>
+                )}
+                {leave.status === "PENDING" &&
+                  activeTab === "pending-approval" && (
+                    <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+                      <Button
+                        appearance="primary"
+                        size="small"
+                        icon={<Checkmark24Regular />}
+                        onClick={() =>
+                          approveLeave.mutate({ id: leave.id, approved: true })
+                        }
+                        style={{ flex: 1 }}
+                      >
+                        Approve
+                      </Button>
+                      <Button
+                        appearance="secondary"
+                        size="small"
+                        icon={<Dismiss24Regular />}
+                        onClick={() =>
+                          approveLeave.mutate({ id: leave.id, approved: false })
+                        }
+                        style={{ flex: 1 }}
+                      >
+                        Reject
+                      </Button>
+                    </div>
                   )}
-                  {leave.status === "PENDING" &&
-                    activeTab === "pending-approval" && (
-                      <div style={{ display: "flex", gap: 4 }}>
-                        <Button
-                          appearance="subtle"
-                          size="small"
-                          icon={<Checkmark24Regular />}
-                          onClick={() =>
-                            approveLeave.mutate({
-                              id: leave.id,
-                              approved: true,
-                            })
-                          }
-                        >
-                          Approve
-                        </Button>
+              </Card>
+            ))}
+          </div>
+        ) : (
+          // Desktop Table View
+          <Table>
+            <TableHeader>
+              <TableRow>
+                {activeTab !== "my-leaves" && (
+                  <TableHeaderCell>Employee</TableHeaderCell>
+                )}
+                <TableHeaderCell>Type</TableHeaderCell>
+                <TableHeaderCell>Dates</TableHeaderCell>
+                <TableHeaderCell>Reason</TableHeaderCell>
+                <TableHeaderCell>Status</TableHeaderCell>
+                <TableHeaderCell>Actions</TableHeaderCell>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {leaves?.map((leave) => (
+                <TableRow key={leave.id}>
+                  {activeTab !== "my-leaves" && (
+                    <TableCell>
+                      {leave.employee.user.name || leave.employee.user.email}
+                    </TableCell>
+                  )}
+                  <TableCell>
+                    <Badge appearance="outline">{leave.type}</Badge>
+                    {leave.isHalfDay && (
+                      <Badge
+                        appearance="tint"
+                        color="informative"
+                        style={{ marginLeft: 4 }}
+                      >
+                        Half Day
+                      </Badge>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {new Date(leave.startDate).toLocaleDateString()} -{" "}
+                    {new Date(leave.endDate).toLocaleDateString()}
+                  </TableCell>
+                  <TableCell
+                    style={{
+                      maxWidth: 200,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    {leave.reason}
+                  </TableCell>
+                  <TableCell>{getStatusBadge(leave.status)}</TableCell>
+                  <TableCell>
+                    {leave.status === "PENDING" &&
+                      activeTab === "my-leaves" && (
                         <Button
                           appearance="subtle"
                           size="small"
                           icon={<Dismiss24Regular />}
-                          onClick={() =>
-                            approveLeave.mutate({
-                              id: leave.id,
-                              approved: false,
-                            })
-                          }
+                          onClick={() => cancelLeave.mutate(leave.id)}
                         >
-                          Reject
+                          Cancel
                         </Button>
-                      </div>
-                    )}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+                      )}
+                    {leave.status === "PENDING" &&
+                      activeTab === "pending-approval" && (
+                        <div style={{ display: "flex", gap: 4 }}>
+                          <Button
+                            appearance="subtle"
+                            size="small"
+                            icon={<Checkmark24Regular />}
+                            onClick={() =>
+                              approveLeave.mutate({
+                                id: leave.id,
+                                approved: true,
+                              })
+                            }
+                          >
+                            Approve
+                          </Button>
+                          <Button
+                            appearance="subtle"
+                            size="small"
+                            icon={<Dismiss24Regular />}
+                            onClick={() =>
+                              approveLeave.mutate({
+                                id: leave.id,
+                                approved: false,
+                              })
+                            }
+                          >
+                            Reject
+                          </Button>
+                        </div>
+                      )}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
 
         {leaves?.length === 0 && (
           <div

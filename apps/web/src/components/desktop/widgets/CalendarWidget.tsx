@@ -8,6 +8,7 @@ import {
   Grid16Regular,
   CalendarLtr16Regular,
   List16Regular,
+  ArrowClockwise16Regular,
 } from "@fluentui/react-icons";
 import type {
   CalendarWidget as CalendarWidgetType,
@@ -72,10 +73,16 @@ export function CalendarWidget({
     };
   }, [currentDate]);
 
-  // Fetch calendar events
-  const { data: eventsData, isLoading: eventsLoading } = useQuery(
-    calendarQueries.events(timeMin, timeMax),
-  );
+  // Fetch calendar events with auto-refresh every minute
+  const {
+    data: eventsData,
+    isLoading: eventsLoading,
+    refetch,
+    isFetching,
+  } = useQuery({
+    ...calendarQueries.events(timeMin, timeMax),
+    refetchInterval: 60 * 1000, // Auto-refresh every 1 minute
+  });
 
   const events = eventsData?.events || [];
 
@@ -532,6 +539,21 @@ export function CalendarWidget({
               icon={<List16Regular />}
               onClick={() => changeStyle("agenda")}
               style={{ minWidth: 24, height: 24, padding: 2 }}
+            />
+          </Tooltip>
+          <Tooltip content="Refresh" relationship="label">
+            <Button
+              appearance="subtle"
+              size="small"
+              icon={<ArrowClockwise16Regular />}
+              onClick={() => refetch()}
+              disabled={isFetching}
+              style={{
+                minWidth: 24,
+                height: 24,
+                padding: 2,
+                animation: isFetching ? "spin 1s linear infinite" : undefined,
+              }}
             />
           </Tooltip>
           <Tooltip content="Remove" relationship="label">
