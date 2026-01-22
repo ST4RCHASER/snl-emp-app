@@ -59,8 +59,8 @@ snl-emp-app/
 │   ├── api/                 # ElysiaJS backend (port 3000)
 │   │   └── src/
 │   │       ├── auth/        # Better Auth configuration
-│   │       ├── routes/      # API routes (employees, leaves, complaints, settings, announcements)
-│   │       ├── middleware/  # RBAC middleware
+│   │       ├── routes/      # API routes (employees, leaves, complaints, settings, audit, etc.)
+│   │       ├── middleware/  # RBAC middleware, API logger
 │   │       ├── app.ts       # Main Elysia app
 │   │       └── index.ts     # Entry point
 │   └── web/                 # React frontend (port 5173)
@@ -70,6 +70,7 @@ snl-emp-app/
 │           ├── components/
 │           │   ├── desktop/ # Window management (Desktop, Window, Taskbar, WindowContext)
 │           │   └── apps/    # Application windows (Profile, Settings, LeaveManagement, etc.)
+│           ├── hooks/       # Custom hooks (useMobile)
 │           ├── stores/      # Zustand stores (windowStore)
 │           └── routes/      # TanStack Router routes
 ├── packages/
@@ -88,8 +89,9 @@ snl-emp-app/
 
 ### Backend (apps/api)
 - ElysiaJS with method chaining for route definitions
-- Better Auth handles Google SSO authentication
+- Better Auth handles Google SSO authentication with hooks for auth event logging
 - RBAC middleware for role-based access control
+- API logger middleware captures all API requests with user info
 - Routes export types for Eden Treaty inference
 - Swagger documentation at `/swagger`
 
@@ -101,6 +103,7 @@ snl-emp-app/
 - Fluent UI v9 components
 - Window animations (open, close, minimize, restore, maximize)
 - Window refresh button to reload app data
+- Mobile-responsive layouts using `useMobile()` hook (768px breakpoint)
 
 ### Database
 - Prisma ORM with PostgreSQL
@@ -112,7 +115,7 @@ snl-emp-app/
 - **EMPLOYEE**: Basic access (own profile, own leaves, submit complaints)
 - **HR**: Can edit employees, manage complaints, configure settings, manage announcements
 - **MANAGEMENT**: Can approve leave requests for assigned employees
-- **DEVELOPER**: Full access to everything (superadmin, bypasses all role checks)
+- **DEVELOPER**: Full access to everything (superadmin, bypasses all role checks, access to Audit Logs)
 
 ## Key Patterns
 
@@ -130,7 +133,7 @@ export const exampleRoutes = new Elysia({ prefix: "/api/example" })
   });
 ```
 
-Then register in `apps/api/src/app.ts`:
+Then register in `apps/api/src/routes/index.ts` and `apps/api/src/app.ts`:
 ```typescript
 .use(exampleRoutes)
 ```
@@ -162,8 +165,10 @@ export const exampleQueries = {
 };
 ```
 
-### Adding a mutation with cache invalidation
+### Adding a mutation with cache invalidation and action logging
 ```typescript
+import { logAction } from "./audit";
+
 export function useCreateExample() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -172,8 +177,9 @@ export function useCreateExample() {
       if (error) throw error;
       return data;
     },
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["examples"] });
+      logAction("create_example", "form", "Created new example", { ...variables });
     },
   });
 }
@@ -200,6 +206,14 @@ Located in `apps/api/src/middleware/rbac.ts`:
 - `isDeveloper(user)`, `isHR(user)`, `isManagement(user)`
 - `canManageEmployees(user)`, `canApproveLeaves(user)`, `canManageComplaints(user)`, `canManageSettings(user)`
 
+### User Type with Role
+The `User` type in `apps/api/src/auth/index.ts` extends the Better Auth session user with the `role` field:
+```typescript
+export type User = Session["user"] & {
+  role?: string | null;
+};
+```
+
 ## Environment Variables
 
 Copy `.env.example` to `.env` and configure:
@@ -214,6 +228,8 @@ Copy `.env.example` to `.env` and configure:
 - Windows have states: `id`, `appId`, `title`, `isMinimized`, `isMaximized`, `isFocused`, `position`, `size`, `zIndex`, `animationState`, `refreshKey`
 - Animation states: `idle`, `opening`, `closing`, `minimizing`, `restoring`, `maximizing`
 - `refreshKey` is incremented when reload button is clicked to trigger data refresh
+- `openWindow` accepts `forceNew` parameter - when true, always opens new window instance (used by desktop icons)
+- Taskbar clicks focus existing window, desktop icon clicks open new instances
 
 ### Window Refresh Pattern
 Each app uses `useWindowRefresh` hook from `WindowContext.tsx` to invalidate TanStack Query cache when:
@@ -231,6 +247,10 @@ export default function MyApp() {
 }
 ```
 
+### Desktop Context Menu
+- Right-click context menu only appears on desktop background (not inside app windows)
+- Window.tsx uses `onContextMenu={(e) => e.stopPropagation()}` to prevent propagation
+
 ## Available Apps
 
 | App | File | Description | Roles |
@@ -239,9 +259,75 @@ export default function MyApp() {
 | Employee Directory | `apps/EmployeeDirectory` | List/edit employees | All (edit: HR) |
 | Leave Management | `apps/LeaveManagement` | Request/approve leaves | All (approve: Management) |
 | Complaint System | `apps/ComplaintSystem` | Submit/manage complaints | All (manage: HR) |
+| Work Logs | `apps/WorkHours` | Track daily work hours | All |
 | Calendar | `apps/Calendar` | Google Calendar integration | All |
 | Settings | `apps/Settings` | App preferences, leave policy | All (policy: HR) |
 | Announcements | `apps/Announcements` | Company announcements | All (manage: HR) |
+| Audit Logs | `apps/AuditLogs` | View action & API logs | DEVELOPER only |
+
+## Audit Logging System
+
+### Database Schema
+- `ActionLog`: User actions (sign_in, sign_out, open_app, form submissions, navigation, etc.)
+- `ApiLog`: All API requests with method, path, status, response time, user ID
+
+### Backend Implementation
+- **Auth hooks** (`apps/api/src/auth/index.ts`): Logs sign_in and sign_out events using `createAuthMiddleware`
+- **API logger** (`apps/api/src/middleware/apiLogger.ts`): `logApiRequest()` function called from `onAfterHandle` hook
+- **Audit routes** (`apps/api/src/routes/audit.ts`): Endpoints for fetching logs (DEVELOPER only)
+
+### Frontend Implementation
+- **Action logging** (`apps/web/src/api/queries/audit.ts`): `logAction(action, category, description, metadata)` helper
+- Action logging added to: app opens, tab switches, form submissions, navigation events
+- **AuditLogs app** shows both action logs and API logs with user name/email
+
+### Adding Action Logging to Components
+```typescript
+import { logAction } from "@/api/queries/audit";
+
+// Log navigation
+const handleTabChange = (tab: string) => {
+  setActiveTab(tab);
+  logAction("switch_tab", "navigation", `Switched to ${tab} tab`, { tab });
+};
+
+// Log in mutation onSuccess
+onSuccess: () => {
+  logAction("create_item", "form", "Created new item");
+}
+```
+
+### Action Categories
+- `auth`: Sign in, sign out
+- `app`: Open app, close app
+- `navigation`: Tab switches, page navigation, view details
+- `form`: Form submissions, updates, deletions
+
+## Mobile Responsiveness
+
+### useMobile Hook
+```typescript
+import { useMobile } from "@/hooks/useMobile";
+
+export default function MyComponent() {
+  const isMobile = useMobile(); // true when viewport < 768px
+  
+  return (
+    <div style={{ 
+      gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr" 
+    }}>
+      {/* Content */}
+    </div>
+  );
+}
+```
+
+### Mobile Patterns
+- Tables become card lists on mobile
+- Multi-column grids become single column
+- Dialogs use full width on mobile
+- Reduce padding/gaps on mobile
+- Stack header elements vertically
 
 ## Announcements Feature
 
@@ -261,3 +347,20 @@ export default function MyApp() {
 - Toolbar: undo/redo, headings, bold/italic/underline/strikethrough, alignment, lists, quote, code, link, image
 - Image upload to `https://up.m1r.ai/upload` with `uploadType: 0`
 - Uses useRef for initialization to prevent cursor jumping issues
+
+## Elysia Hooks Order (apps/api/src/app.ts)
+
+The order of middleware/hooks matters in Elysia:
+```typescript
+export const app = new Elysia()
+  .use(cors(...))
+  .use(swagger(...))
+  .onRequest(...)        // 1. Request timing (before auth)
+  .use(authPlugin)       // 2. Auth - derives user from session
+  .onAfterHandle(...)    // 3. API logging (after auth, has user)
+  .use(employeeRoutes)   // 4. Routes
+  .use(leaveRoutes)
+  // ... more routes
+```
+
+Hooks registered BEFORE routes apply to those routes. The `onAfterHandle` is placed after `authPlugin` so it has access to the `user` context for logging.
