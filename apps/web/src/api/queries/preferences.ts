@@ -21,6 +21,8 @@ import type { Widget } from "@/stores/widgetStore";
 export type BackgroundFit = "cover" | "contain" | "fill" | "center";
 export type IconPositions = Record<string, { x: number; y: number }>;
 export type WidgetsData = Widget[];
+export type ShortcutItem = { id: string; appId: string };
+export type DesktopShortcuts = ShortcutItem[]; // Array of shortcut objects
 
 export function useUpdatePreferences() {
   const queryClient = useQueryClient();
@@ -35,6 +37,7 @@ export function useUpdatePreferences() {
       guiScale?: number;
       iconPositions?: IconPositions | null;
       widgets?: WidgetsData | null;
+      desktopShortcuts?: DesktopShortcuts | null;
     }) => {
       const { data: result, error } = await api.api.preferences.put(data);
       if (error) throw error;

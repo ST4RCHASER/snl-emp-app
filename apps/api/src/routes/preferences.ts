@@ -51,6 +51,10 @@ export const preferencesRoutes = new Elysia({ prefix: "/api/preferences" })
         iconPositions:
           body.iconPositions === null ? { set: null } : body.iconPositions,
         widgets: body.widgets === null ? { set: null } : body.widgets,
+        desktopShortcuts:
+          body.desktopShortcuts === null
+            ? { set: null }
+            : body.desktopShortcuts,
       };
 
       const preferences = await prisma.userPreferences.upsert({
@@ -61,6 +65,7 @@ export const preferencesRoutes = new Elysia({ prefix: "/api/preferences" })
           ...body,
           iconPositions: body.iconPositions ?? undefined,
           widgets: body.widgets ?? undefined,
+          desktopShortcuts: body.desktopShortcuts ?? undefined,
         },
       });
 
@@ -96,6 +101,20 @@ export const preferencesRoutes = new Elysia({ prefix: "/api/preferences" })
           ]),
         ),
         widgets: t.Optional(t.Union([t.Array(t.Any()), t.Null()])),
+        desktopShortcuts: t.Optional(
+          t.Union([
+            // New format: array of {id, appId} objects
+            t.Array(
+              t.Object({
+                id: t.String(),
+                appId: t.String(),
+              }),
+            ),
+            // Old format: array of strings (for backwards compatibility)
+            t.Array(t.String()),
+            t.Null(),
+          ]),
+        ),
       }),
       detail: {
         tags: ["Preferences"],

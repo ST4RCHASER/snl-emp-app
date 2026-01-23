@@ -14,6 +14,7 @@ import { Taskbar } from "./Taskbar";
 import { AppIcon } from "./AppIcon";
 import { WindowContext } from "./WindowContext";
 import { DesktopContextMenu } from "./DesktopContextMenu";
+import { AppDrawer } from "./AppDrawer";
 import { MobileAppDrawer } from "./MobileAppDrawer";
 import {
   StickyNoteWidget,
@@ -26,6 +27,7 @@ import {
   useUpdatePreferences,
   type BackgroundFit,
   type IconPositions,
+  type DesktopShortcuts,
 } from "@/api/queries/preferences";
 import { announcementQueries } from "@/api/queries/announcements";
 import { logAction } from "@/api/queries/audit";
@@ -69,6 +71,20 @@ export function Desktop() {
     y: number;
   } | null>(null);
 
+  // App drawer state
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+
+  // Icon dragging state (to show grid overlay)
+  const [isIconDragging, setIsIconDragging] = useState(false);
+
+  // Icon context menu state (for right-click on desktop icons)
+  const [iconContextMenu, setIconContextMenu] = useState<{
+    x: number;
+    y: number;
+    shortcutId: string;
+    appId: string;
+  } | null>(null);
+
   const { data: preferences } = useQuery(preferencesQueries.user);
   const { data: unreadStatus } = useQuery(announcementQueries.unread);
   const systemIsDark = useSystemTheme();
@@ -84,6 +100,7 @@ export function Desktop() {
         guiScale?: number;
         iconPositions?: IconPositions;
         widgets?: Widget[];
+        desktopShortcuts?: DesktopShortcuts;
       }
     | undefined;
 
@@ -187,6 +204,40 @@ export function Desktop() {
   const guiScale = prefs?.guiScale || 1.0;
   const iconPositions = (prefs?.iconPositions as IconPositions) || {};
 
+  // Desktop shortcuts - default to some common apps if not set
+  // Each shortcut has a unique id and an appId
+  type ShortcutItem = { id: string; appId: string };
+  const defaultShortcuts: ShortcutItem[] = [
+    { id: "default-profile", appId: "profile" },
+    { id: "default-announcements", appId: "announcements" },
+    { id: "default-leave", appId: "leave-management" },
+    { id: "default-work", appId: "work-hours" },
+  ];
+
+  // Handle both old format (string[]) and new format (ShortcutItem[])
+  // Cast to unknown first since the database returns Json? type
+  const rawShortcuts = prefs?.desktopShortcuts as unknown;
+  const desktopShortcuts: ShortcutItem[] = rawShortcuts
+    ? Array.isArray(rawShortcuts) && rawShortcuts.length > 0
+      ? typeof rawShortcuts[0] === "string"
+        ? // Old format: convert string[] to ShortcutItem[]
+          (rawShortcuts as string[]).map((appId, idx) => ({
+            id: `migrated-${idx}-${appId}`,
+            appId,
+          }))
+        : // New format: use as-is
+          (rawShortcuts as ShortcutItem[])
+      : defaultShortcuts
+    : defaultShortcuts;
+
+  // Map shortcuts to apps with their unique shortcut id
+  const shortcutApps = desktopShortcuts
+    .map((shortcut) => {
+      const app = availableApps.find((a) => a.id === shortcut.appId);
+      return app ? { ...app, shortcutId: shortcut.id } : null;
+    })
+    .filter((app): app is NonNullable<typeof app> => app !== null);
+
   // Constrain icon positions on screen resize/reload (avoid overlaps)
   const hasConstrainedIconsRef = useRef(false);
   useEffect(() => {
@@ -267,10 +318,10 @@ export function Desktop() {
         return { col: 0, row: 0 };
       };
 
-      // Process ALL available apps, not just those with saved positions
-      availableApps.forEach((app, index) => {
-        const appId = app.id;
-        const savedPos = iconPositions[appId];
+      // Process shortcut apps only (apps shown on desktop)
+      shortcutApps.forEach((app, index) => {
+        const shortcutId = app.shortcutId;
+        const savedPos = iconPositions[shortcutId];
 
         // Get current position (saved or default)
         let currentX: number;
@@ -306,7 +357,7 @@ export function Desktop() {
           const { col, row } = findFreeCell(currentCol, currentRow);
           occupiedCells.add(getCellKey(col, row));
 
-          newPositions[appId] = {
+          newPositions[shortcutId] = {
             x: col * gridSize + margin,
             y: row * gridSize + margin,
           };
@@ -315,7 +366,7 @@ export function Desktop() {
           // Position is valid, mark as occupied
           occupiedCells.add(cellKey);
           if (savedPos) {
-            newPositions[appId] = savedPos;
+            newPositions[shortcutId] = savedPos;
           }
           // If no saved position and not overlapping, don't save (use default)
         }
@@ -326,7 +377,7 @@ export function Desktop() {
       }
       hasConstrainedIconsRef.current = true;
     }
-  }, [prefs, iconPositions, guiScale, updatePreferences, availableApps]);
+  }, [prefs, iconPositions, guiScale, updatePreferences, shortcutApps]);
 
   // On mobile, show the app drawer instead of the desktop
   if (isMobile) {
@@ -351,15 +402,26 @@ export function Desktop() {
 
   // Get position for an app icon
   const getIconPosition = useCallback(
-    (appId: string, index: number) => {
-      if (iconPositions[appId]) {
-        // Scale stored positions by GUI scale
-        return {
-          x: iconPositions[appId].x * guiScale,
-          y: iconPositions[appId].y * guiScale,
-        };
+    (shortcutId: string, index: number) => {
+      const savedPos = iconPositions[shortcutId];
+      if (savedPos) {
+        // Validate that position is within reasonable bounds
+        const screenWidth = window.innerWidth;
+        const screenHeight = window.innerHeight;
+        const scaledX = savedPos.x * guiScale;
+        const scaledY = savedPos.y * guiScale;
+
+        // If position is way off screen, use default instead
+        if (
+          scaledX >= 0 &&
+          scaledX < screenWidth - 40 &&
+          scaledY >= 0 &&
+          scaledY < screenHeight - 88
+        ) {
+          return { x: scaledX, y: scaledY };
+        }
       }
-      // Default grid position
+      // Default grid position (first column, stacked by index)
       return {
         x: ICON_MARGIN,
         y: index * GRID_SIZE + ICON_MARGIN,
@@ -370,7 +432,7 @@ export function Desktop() {
 
   // Handle icon drag end
   const handleIconDragEnd = useCallback(
-    (appId: string, x: number, y: number) => {
+    (shortcutId: string, x: number, y: number) => {
       const snapped = snapToGrid(x, y);
       // Save positions in unscaled form so they work across different scales
       const unscaledPosition = {
@@ -379,7 +441,7 @@ export function Desktop() {
       };
       const newPositions = {
         ...iconPositions,
-        [appId]: unscaledPosition,
+        [shortcutId]: unscaledPosition,
       };
       updatePreferences.mutate({ iconPositions: newPositions });
     },
@@ -498,6 +560,95 @@ export function Desktop() {
     [openWindow],
   );
 
+  // Add shortcut to desktop
+  const handleAddShortcut = useCallback(
+    (appId: string) => {
+      // Generate unique shortcut ID
+      const shortcutId = `shortcut-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+      // Add the shortcut with unique ID
+      // Don't set position - let the default positioning handle it based on index
+      const newShortcut = { id: shortcutId, appId };
+      const newShortcuts = [...desktopShortcuts, newShortcut];
+
+      updatePreferences.mutate({
+        desktopShortcuts: newShortcuts,
+      });
+    },
+    [desktopShortcuts, updatePreferences],
+  );
+
+  // Remove shortcut from desktop
+  const handleRemoveShortcut = useCallback(
+    (shortcutId: string) => {
+      const newShortcuts = desktopShortcuts.filter((s) => s.id !== shortcutId);
+      // Also remove icon position
+      const newPositions = { ...iconPositions };
+      delete newPositions[shortcutId];
+      updatePreferences.mutate({
+        desktopShortcuts: newShortcuts,
+        iconPositions: newPositions,
+      });
+    },
+    [desktopShortcuts, iconPositions, updatePreferences],
+  );
+
+  // Handle icon right-click
+  const handleIconContextMenu = useCallback(
+    (e: React.MouseEvent, shortcutId: string, appId: string) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setIconContextMenu({ x: e.clientX, y: e.clientY, shortcutId, appId });
+    },
+    [],
+  );
+
+  const handleCloseIconContextMenu = useCallback(() => {
+    setIconContextMenu(null);
+  }, []);
+
+  // Handle drag and drop from drawer to desktop
+  const handleDesktopDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      const appId = e.dataTransfer.getData("application/x-app-id");
+      if (appId) {
+        // Generate unique shortcut ID
+        const shortcutId = `shortcut-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+        // Calculate position from drop location
+        const desktopRect = (
+          e.currentTarget as HTMLElement
+        ).getBoundingClientRect();
+        const dropX = e.clientX - desktopRect.left;
+        const dropY = e.clientY - desktopRect.top;
+        const snapped = snapToGrid(dropX, dropY);
+        const unscaledPosition = {
+          x: snapped.x / guiScale,
+          y: snapped.y / guiScale,
+        };
+
+        // Add shortcut and position in single update
+        const newShortcut = { id: shortcutId, appId };
+        const newShortcuts = [...desktopShortcuts, newShortcut];
+        const newPositions = {
+          ...iconPositions,
+          [shortcutId]: unscaledPosition,
+        };
+        updatePreferences.mutate({
+          desktopShortcuts: newShortcuts,
+          iconPositions: newPositions,
+        });
+      }
+    },
+    [desktopShortcuts, iconPositions, updatePreferences, snapToGrid, guiScale],
+  );
+
+  const handleDesktopDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+  }, []);
+
   // Get background style based on fit setting
   const getBackgroundStyle = () => {
     const baseStyle = {
@@ -579,17 +730,66 @@ export function Desktop() {
         paddingBottom: "3rem", // Account for taskbar height (rem-based for scaling)
       }}
       onContextMenu={handleContextMenu}
+      onDrop={handleDesktopDrop}
+      onDragOver={handleDesktopDragOver}
     >
-      {/* Desktop Icons */}
-      {availableApps.map((app, index) => {
-        const pos = getIconPosition(app.id, index);
+      {/* Grid overlay when dragging icons */}
+      {isIconDragging && (
+        <div
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 48, // Above taskbar
+            pointerEvents: "none",
+            zIndex: 0,
+            backgroundImage: `
+              linear-gradient(to right, rgba(255,255,255,0.1) 1px, transparent 1px),
+              linear-gradient(to bottom, rgba(255,255,255,0.1) 1px, transparent 1px)
+            `,
+            backgroundSize: `${GRID_SIZE}px ${GRID_SIZE}px`,
+            backgroundPosition: `${ICON_MARGIN}px ${ICON_MARGIN}px`,
+          }}
+        >
+          {/* Highlight cells */}
+          {Array.from({ length: Math.ceil(window.innerWidth / GRID_SIZE) }).map(
+            (_, col) =>
+              Array.from({
+                length: Math.ceil((window.innerHeight - 48) / GRID_SIZE),
+              }).map((_, row) => (
+                <div
+                  key={`${col}-${row}`}
+                  style={{
+                    position: "absolute",
+                    left: col * GRID_SIZE + ICON_MARGIN,
+                    top: row * GRID_SIZE + ICON_MARGIN,
+                    width: GRID_SIZE - 2,
+                    height: GRID_SIZE - 2,
+                    border: "1px dashed rgba(255,255,255,0.15)",
+                    borderRadius: 4,
+                  }}
+                />
+              )),
+          )}
+        </div>
+      )}
+
+      {/* Desktop Icons - only shortcuts */}
+      {shortcutApps.map((app, index) => {
+        const pos = getIconPosition(app.shortcutId, index);
         return (
           <AppIcon
-            key={app.id}
+            key={app.shortcutId}
             app={app}
             position={pos}
             onClick={() => handleOpenApp(app.id, true)}
-            onDragEnd={(x, y) => handleIconDragEnd(app.id, x, y)}
+            onDragEnd={(x, y) => handleIconDragEnd(app.shortcutId, x, y)}
+            onContextMenu={(e) =>
+              handleIconContextMenu(e, app.shortcutId, app.id)
+            }
+            onDragStart={() => setIsIconDragging(true)}
+            onDragCancel={() => setIsIconDragging(false)}
           />
         );
       })}
@@ -691,7 +891,117 @@ export function Desktop() {
       })}
 
       {/* Taskbar */}
-      <Taskbar />
+      <Taskbar
+        onOpenDrawer={() => setIsDrawerOpen(!isDrawerOpen)}
+        isDrawerOpen={isDrawerOpen}
+      />
+
+      {/* App Drawer */}
+      {isDrawerOpen && (
+        <AppDrawer
+          apps={availableApps}
+          onOpenApp={(appId) => handleOpenApp(appId, true)}
+          onAddShortcut={handleAddShortcut}
+          onClose={() => setIsDrawerOpen(false)}
+        />
+      )}
+
+      {/* Icon Context Menu (right-click on desktop icon) */}
+      {iconContextMenu && (
+        <>
+          <div
+            style={{
+              position: "fixed",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              zIndex: 10000,
+            }}
+            onClick={handleCloseIconContextMenu}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              handleCloseIconContextMenu();
+            }}
+          />
+          <div
+            style={{
+              position: "fixed",
+              left: iconContextMenu.x,
+              top: iconContextMenu.y,
+              background: "var(--colorNeutralBackground1)",
+              borderRadius: "0.5rem",
+              boxShadow: "0 4px 16px rgba(0, 0, 0, 0.2)",
+              border: "1px solid var(--colorNeutralStroke1)",
+              zIndex: 10001,
+              minWidth: "10rem",
+              overflow: "hidden",
+            }}
+          >
+            <button
+              onClick={() => {
+                handleOpenApp(iconContextMenu.appId, true);
+                handleCloseIconContextMenu();
+              }}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "0.5rem",
+                width: "100%",
+                padding: "0.5rem 0.75rem",
+                border: "none",
+                background: "transparent",
+                cursor: "pointer",
+                fontSize: "0.875rem",
+                color: "var(--colorNeutralForeground1)",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background =
+                  "var(--colorNeutralBackground1Hover)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "transparent";
+              }}
+            >
+              Open
+            </button>
+            <div
+              style={{
+                height: "1px",
+                background: "var(--colorNeutralStroke1)",
+                margin: "0.25rem 0",
+              }}
+            />
+            <button
+              onClick={() => {
+                handleRemoveShortcut(iconContextMenu.shortcutId);
+                handleCloseIconContextMenu();
+              }}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "0.5rem",
+                width: "100%",
+                padding: "0.5rem 0.75rem",
+                border: "none",
+                background: "transparent",
+                cursor: "pointer",
+                fontSize: "0.875rem",
+                color: "var(--colorPaletteRedForeground1)",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background =
+                  "var(--colorNeutralBackground1Hover)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "transparent";
+              }}
+            >
+              Remove from Desktop
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }

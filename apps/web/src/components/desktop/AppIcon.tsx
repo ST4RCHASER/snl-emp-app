@@ -6,6 +6,7 @@ import {
   PeopleTeam24Regular,
   Calendar24Regular,
   CalendarLtr24Regular,
+  CalendarPerson24Regular,
   ChatWarning24Regular,
   Chat24Regular,
   Settings24Regular,
@@ -21,6 +22,7 @@ const iconMap: Record<string, React.ReactNode> = {
   PeopleTeam: <PeopleTeam24Regular />,
   Calendar: <Calendar24Regular />,
   CalendarLtr: <CalendarLtr24Regular />,
+  CalendarPerson: <CalendarPerson24Regular />,
   ChatWarning: <ChatWarning24Regular />,
   Chat: <Chat24Regular />,
   Settings: <Settings24Regular />,
@@ -36,24 +38,47 @@ interface AppIconProps {
   position: { x: number; y: number };
   onClick: () => void;
   onDragEnd: (x: number, y: number) => void;
+  onContextMenu?: (e: React.MouseEvent) => void;
+  onDragStart?: () => void;
+  onDragCancel?: () => void;
 }
 
 // Distance threshold to differentiate click from drag (in pixels)
 const DRAG_THRESHOLD = 5;
 
-export function AppIcon({ app, position, onClick, onDragEnd }: AppIconProps) {
+export function AppIcon({
+  app,
+  position,
+  onClick,
+  onDragEnd,
+  onContextMenu,
+  onDragStart,
+  onDragCancel,
+}: AppIconProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [currentPos, setCurrentPos] = useState(position);
   const elementRef = useRef<HTMLDivElement>(null);
   const startPosRef = useRef({ x: 0, y: 0 });
   const hasDraggedRef = useRef(false);
+  const justDroppedRef = useRef(false);
 
   // Update position when props change (e.g., after saving to DB)
+  // But don't update if we just dropped - wait for server to confirm
   if (
     !isDragging &&
+    !justDroppedRef.current &&
     (currentPos.x !== position.x || currentPos.y !== position.y)
   ) {
     setCurrentPos(position);
+  }
+
+  // Reset justDropped flag when position props match current position (server confirmed)
+  if (
+    justDroppedRef.current &&
+    Math.abs(currentPos.x - position.x) < 5 &&
+    Math.abs(currentPos.y - position.y) < 5
+  ) {
+    justDroppedRef.current = false;
   }
 
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -73,8 +98,11 @@ export function AppIcon({ app, position, onClick, onDragEnd }: AppIconProps) {
       const deltaY = Math.abs(moveEvent.clientY - startPosRef.current.y);
 
       if (deltaX > DRAG_THRESHOLD || deltaY > DRAG_THRESHOLD) {
-        hasDraggedRef.current = true;
-        setIsDragging(true);
+        if (!hasDraggedRef.current) {
+          hasDraggedRef.current = true;
+          setIsDragging(true);
+          onDragStart?.();
+        }
       }
 
       if (hasDraggedRef.current) {
@@ -101,6 +129,7 @@ export function AppIcon({ app, position, onClick, onDragEnd }: AppIconProps) {
       if (hasDraggedRef.current) {
         // It was a drag - save the new position
         setIsDragging(false);
+        onDragCancel?.(); // Notify parent that dragging ended
         const desktopRect = document
           .querySelector(".desktop")
           ?.getBoundingClientRect();
@@ -109,7 +138,18 @@ export function AppIcon({ app, position, onClick, onDragEnd }: AppIconProps) {
           if (rect) {
             const finalX = rect.left - desktopRect.left;
             const finalY = rect.top - desktopRect.top;
-            onDragEnd(finalX, finalY);
+
+            // Snap to grid locally (90px grid, 10px margin)
+            const gridSize = 90;
+            const margin = 10;
+            const snappedX = Math.round(finalX / gridSize) * gridSize + margin;
+            const snappedY = Math.round(finalY / gridSize) * gridSize + margin;
+
+            // Update local position to snapped position immediately
+            setCurrentPos({ x: snappedX, y: snappedY });
+            justDroppedRef.current = true; // Prevent snap-back until server confirms
+
+            onDragEnd(snappedX, snappedY);
           }
         }
       } else {
@@ -142,6 +182,7 @@ export function AppIcon({ app, position, onClick, onDragEnd }: AppIconProps) {
         opacity: isDragging ? 0.8 : 1,
       }}
       onMouseDown={handleMouseDown}
+      onContextMenu={onContextMenu}
       tabIndex={0}
       onKeyDown={(e) => {
         if (e.key === "Enter") onClick();

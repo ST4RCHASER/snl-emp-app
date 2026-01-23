@@ -28,6 +28,7 @@ import {
   Subtract20Regular,
   Maximize20Regular,
   Square20Regular,
+  Apps24Regular,
 } from "@fluentui/react-icons";
 import { useWindowStore, type WindowState } from "@/stores/windowStore";
 import { useAuth } from "@/auth/provider";
@@ -48,7 +49,38 @@ const iconMap: Record<string, React.ReactNode> = {
   "audit-logs": <DocumentSearch24Regular />,
 };
 
-export function Taskbar() {
+// Custom icon component for team calendar with employee avatar overlay
+function TeamCalendarIcon({
+  avatar,
+  name,
+}: {
+  avatar?: string;
+  name?: string;
+}) {
+  return (
+    <div style={{ position: "relative", width: 24, height: 24 }}>
+      <CalendarLtr24Regular />
+      <Avatar
+        size={20}
+        name={name || "Employee"}
+        image={{ src: avatar || undefined }}
+        style={{
+          position: "absolute",
+          bottom: -4,
+          right: -4,
+          border: `2px solid ${tokens.colorNeutralBackground2}`,
+        }}
+      />
+    </div>
+  );
+}
+
+interface TaskbarProps {
+  onOpenDrawer?: () => void;
+  isDrawerOpen?: boolean;
+}
+
+export function Taskbar({ onOpenDrawer, isDrawerOpen }: TaskbarProps) {
   const windows = useWindowStore((s) => s.windows);
   const focusWindow = useWindowStore((s) => s.focusWindow);
   const restoreWindow = useWindowStore((s) => s.restoreWindow);
@@ -120,6 +152,51 @@ export function Taskbar() {
           zIndex: 9999,
         }}
       >
+        {/* Start/App Drawer Button */}
+        <Tooltip content="All Apps" relationship="label">
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: "2.5rem",
+              height: "2.5rem",
+              borderRadius: "0.5rem",
+              cursor: "pointer",
+              transition: "background 0.2s",
+              background: isDrawerOpen
+                ? tokens.colorBrandBackground
+                : "transparent",
+              color: isDrawerOpen ? "white" : tokens.colorNeutralForeground1,
+              fontSize: "1.25rem",
+            }}
+            onClick={onOpenDrawer}
+            onMouseEnter={(e) => {
+              if (!isDrawerOpen) {
+                e.currentTarget.style.background =
+                  tokens.colorNeutralBackground1Hover;
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!isDrawerOpen) {
+                e.currentTarget.style.background = "transparent";
+              }
+            }}
+          >
+            <Apps24Regular />
+          </div>
+        </Tooltip>
+
+        {/* Divider */}
+        <div
+          style={{
+            width: 1,
+            height: "1.5rem",
+            background: tokens.colorNeutralStroke1,
+            marginRight: "0.25rem",
+          }}
+        />
+
         <div style={{ display: "flex", gap: "0.25rem", flex: 1 }}>
           {windows.map((win) => (
             <Tooltip key={win.id} content={win.title} relationship="label">
@@ -154,12 +231,19 @@ export function Taskbar() {
                   }
                 }}
               >
-                {iconMap[win.appId] ||
+                {win.appId === "team-calendar" ? (
+                  <TeamCalendarIcon
+                    avatar={win.props?.employeeAvatar as string | undefined}
+                    name={win.props?.employeeName as string | undefined}
+                  />
+                ) : (
+                  iconMap[win.appId] ||
                   (win.appId.startsWith("complaint-chat-") ? (
                     <Chat24Regular />
                   ) : (
                     <Person24Regular />
-                  ))}
+                  ))
+                )}
               </div>
             </Tooltip>
           ))}

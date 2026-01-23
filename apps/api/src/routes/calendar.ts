@@ -8,6 +8,10 @@ const ROOM_IDS = {
   outer: "c_1882cla4qjt9shoclkd8b11drdmno@resource.calendar.google.com",
 } as const;
 
+// Company holidays calendar ID
+const COMPANY_HOLIDAYS_CALENDAR_ID =
+  "c_439fbc0ed0e37a719d970d9a129873597a09de3306f07cc017b331c25d64ce43@group.calendar.google.com";
+
 const ROOM_NAMES = {
   inner: "Inner Room",
   outer: "Outer Room",
@@ -463,6 +467,349 @@ export const calendarRoutes = new Elysia({ prefix: "/api/calendar" })
       detail: {
         tags: ["Calendar"],
         summary: "Get calendar events from Google Calendar",
+      },
+    },
+  )
+
+  // Get company holidays
+  .get(
+    "/holidays",
+    async ({ user, set, query }) => {
+      if (!user) {
+        set.status = 401;
+        return { message: "Unauthorized" };
+      }
+
+      // Get the user's Google account to retrieve access token
+      const account = await prisma.account.findFirst({
+        where: {
+          userId: user.id,
+          providerId: "google",
+        },
+      });
+
+      if (!account || !account.accessToken) {
+        set.status = 400;
+        return { message: "Google account not linked or no access token" };
+      }
+
+      // Calculate time range
+      const timeMin = query.timeMin || new Date().toISOString();
+      const timeMax =
+        query.timeMax ||
+        new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(); // 1 year from now
+
+      // Helper to fetch holidays
+      const fetchHolidays = async (accessToken: string) => {
+        return fetch(
+          `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(COMPANY_HOLIDAYS_CALENDAR_ID)}/events?` +
+            new URLSearchParams({
+              timeMin,
+              timeMax,
+              singleEvents: "true",
+              orderBy: "startTime",
+              maxResults: "100",
+            }),
+          {
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+            },
+          },
+        );
+      };
+
+      try {
+        // Check if token is expired or will expire soon
+        const tokenExpiry = account.accessTokenExpiresAt;
+        const isTokenExpiringSoon =
+          tokenExpiry &&
+          new Date(tokenExpiry).getTime() < Date.now() + 5 * 60 * 1000;
+
+        let currentAccessToken = account.accessToken;
+
+        // Proactively refresh if token is expiring soon
+        if (isTokenExpiringSoon && account.refreshToken) {
+          const refreshed = await refreshAccessToken(account.refreshToken);
+          if (refreshed) {
+            await prisma.account.update({
+              where: { id: account.id },
+              data: {
+                accessToken: refreshed.access_token,
+                ...(refreshed.expires_in && {
+                  accessTokenExpiresAt: new Date(
+                    Date.now() + refreshed.expires_in * 1000,
+                  ),
+                }),
+              },
+            });
+            currentAccessToken = refreshed.access_token;
+          }
+        }
+
+        // Fetch holidays
+        let response = await fetchHolidays(currentAccessToken);
+
+        // If we get a 401, try to refresh the token
+        if (response.status === 401 && account.refreshToken) {
+          const refreshed = await refreshAccessToken(account.refreshToken);
+          if (refreshed) {
+            await prisma.account.update({
+              where: { id: account.id },
+              data: {
+                accessToken: refreshed.access_token,
+                ...(refreshed.expires_in && {
+                  accessTokenExpiresAt: new Date(
+                    Date.now() + refreshed.expires_in * 1000,
+                  ),
+                }),
+              },
+            });
+            currentAccessToken = refreshed.access_token;
+            response = await fetchHolidays(currentAccessToken);
+          } else {
+            set.status = 401;
+            return { message: "Session expired. Please sign in again." };
+          }
+        }
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          console.error("Google Calendar API error for holidays:", errorData);
+
+          if (response.status === 404) {
+            // Calendar not found or not accessible - return empty array
+            return { holidays: [] };
+          }
+
+          set.status = response.status;
+          return {
+            message: errorData.error?.message || "Failed to fetch holidays",
+          };
+        }
+
+        const data = await response.json();
+        const holidays = (data.items || []).map(
+          (event: GoogleCalendarEvent) => ({
+            id: event.id,
+            summary: event.summary || "Holiday",
+            description: event.description || undefined,
+            start: event.start?.dateTime || event.start?.date || "",
+            end: event.end?.dateTime || event.end?.date || "",
+            isAllDay: !!event.start?.date,
+          }),
+        );
+
+        return { holidays };
+      } catch (error) {
+        console.error("Holidays API error:", error);
+        set.status = 500;
+        return { message: "Failed to fetch holidays" };
+      }
+    },
+    {
+      query: t.Object({
+        timeMin: t.Optional(t.String()),
+        timeMax: t.Optional(t.String()),
+      }),
+      detail: {
+        tags: ["Calendar"],
+        summary: "Get company holidays from shared calendar",
+      },
+    },
+  )
+
+  // Get team member's calendar events (for managers)
+  .get(
+    "/team-member/:employeeId",
+    async ({ user, set, params, query }) => {
+      if (!user) {
+        set.status = 401;
+        return { message: "Unauthorized" };
+      }
+
+      const { employeeId } = params;
+
+      // Get the requesting user's employee record to check if they're a manager
+      const requestingEmployee = await prisma.employee.findUnique({
+        where: { userId: user.id },
+      });
+
+      if (!requestingEmployee) {
+        set.status = 403;
+        return { message: "Employee record not found" };
+      }
+
+      // Get the target employee
+      const targetEmployee = await prisma.employee.findUnique({
+        where: { id: employeeId },
+        include: {
+          user: {
+            select: {
+              id: true,
+              email: true,
+              name: true,
+              image: true,
+            },
+          },
+        },
+      });
+
+      if (!targetEmployee) {
+        set.status = 404;
+        return { message: "Team member not found" };
+      }
+
+      // Check if the requesting user is the manager of this employee
+      const isManager = await prisma.employeeManagement.findFirst({
+        where: {
+          employeeId: targetEmployee.id,
+          managerId: requestingEmployee.id,
+        },
+      });
+
+      if (!isManager) {
+        // Also allow if user has HR or DEVELOPER role
+        if (user.role !== "HR" && user.role !== "DEVELOPER") {
+          set.status = 403;
+          return {
+            message: "You can only view calendars of your team members",
+          };
+        }
+      }
+
+      // Get the target employee's Google account
+      const account = await prisma.account.findFirst({
+        where: {
+          userId: targetEmployee.userId,
+          providerId: "google",
+        },
+      });
+
+      if (!account || !account.accessToken) {
+        set.status = 400;
+        return { message: "Team member has not linked their Google account" };
+      }
+
+      // Calculate time range
+      const timeMin = query.timeMin || new Date().toISOString();
+      const timeMax =
+        query.timeMax ||
+        new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+
+      // Helper to fetch calendar events
+      const fetchCalendarEvents = async (accessToken: string) => {
+        return fetch(
+          `https://www.googleapis.com/calendar/v3/calendars/primary/events?` +
+            new URLSearchParams({
+              timeMin,
+              timeMax,
+              singleEvents: "true",
+              orderBy: "startTime",
+              maxResults: "250",
+            }),
+          {
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+            },
+          },
+        );
+      };
+
+      try {
+        // Check if token is expired or will expire soon
+        const tokenExpiry = account.accessTokenExpiresAt;
+        const isTokenExpiringSoon =
+          tokenExpiry &&
+          new Date(tokenExpiry).getTime() < Date.now() + 5 * 60 * 1000;
+
+        let currentAccessToken = account.accessToken;
+
+        // Proactively refresh if token is expiring soon
+        if (isTokenExpiringSoon && account.refreshToken) {
+          const refreshed = await refreshAccessToken(account.refreshToken);
+          if (refreshed) {
+            await prisma.account.update({
+              where: { id: account.id },
+              data: {
+                accessToken: refreshed.access_token,
+                ...(refreshed.expires_in && {
+                  accessTokenExpiresAt: new Date(
+                    Date.now() + refreshed.expires_in * 1000,
+                  ),
+                }),
+              },
+            });
+            currentAccessToken = refreshed.access_token;
+          }
+        }
+
+        // Fetch events
+        let response = await fetchCalendarEvents(currentAccessToken);
+
+        // If we get a 401, try to refresh the token
+        if (response.status === 401 && account.refreshToken) {
+          const refreshed = await refreshAccessToken(account.refreshToken);
+          if (refreshed) {
+            await prisma.account.update({
+              where: { id: account.id },
+              data: {
+                accessToken: refreshed.access_token,
+                ...(refreshed.expires_in && {
+                  accessTokenExpiresAt: new Date(
+                    Date.now() + refreshed.expires_in * 1000,
+                  ),
+                }),
+              },
+            });
+            currentAccessToken = refreshed.access_token;
+            response = await fetchCalendarEvents(currentAccessToken);
+          } else {
+            set.status = 401;
+            return { message: "Team member's session expired" };
+          }
+        }
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          console.error(
+            "Google Calendar API error for team member:",
+            errorData,
+          );
+          set.status = response.status;
+          return {
+            message:
+              errorData.error?.message || "Failed to fetch calendar events",
+          };
+        }
+
+        const data = await response.json();
+        return {
+          employee: {
+            id: targetEmployee.id,
+            fullName: targetEmployee.fullName,
+            nickname: targetEmployee.nickname,
+            email: targetEmployee.user.email,
+            avatar: targetEmployee.avatar || targetEmployee.user.image,
+          },
+          events: data.items || [],
+        };
+      } catch (error) {
+        console.error("Team member calendar API error:", error);
+        set.status = 500;
+        return { message: "Failed to fetch calendar events" };
+      }
+    },
+    {
+      params: t.Object({
+        employeeId: t.String(),
+      }),
+      query: t.Object({
+        timeMin: t.Optional(t.String()),
+        timeMax: t.Optional(t.String()),
+      }),
+      detail: {
+        tags: ["Calendar"],
+        summary: "Get team member's calendar events (for managers)",
       },
     },
   );

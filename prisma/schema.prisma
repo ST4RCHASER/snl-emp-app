@@ -76,8 +76,9 @@ model UserPreferences {
   backgroundFit   String  @default("cover") // "cover", "contain", "fill", "center"
   backgroundColor String  @default("#1a1a1a") // Background color for fit modes
   guiScale        Float   @default(1.0) // GUI scaling factor 0.1 - 5.0
-  iconPositions   Json?   // { appId: { x: number, y: number } }
-  widgets         Json?   // Array of widget objects
+  iconPositions    Json?   // { appId: { x: number, y: number } }
+  widgets          Json?   // Array of widget objects
+  desktopShortcuts Json?   // Array of app IDs shown on desktop
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

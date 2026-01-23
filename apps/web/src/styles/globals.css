@@ -39,19 +39,36 @@ body {
 .login-container {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-end;
   min-height: 100vh;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  padding-right: 10%;
+  background-image: url("https://images.unsplash.com/photo-1518837695005-2083093ee35b?w=1920&q=80");
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
 }
 
 .login-card {
-  background: white;
-  border-radius: 16px;
-  padding: 48px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-  max-width: 400px;
-  width: 100%;
-  text-align: center;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(10px);
+  border-radius: 8px;
+  padding: 40px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  width: 320px;
+  text-align: left;
+}
+
+@media (max-width: 768px) {
+  .login-container {
+    justify-content: center;
+    padding-right: 0;
+    padding: 20px;
+  }
+
+  .login-card {
+    width: 100%;
+    max-width: 320px;
+  }
 }
 
 /* Scrollbar styling */

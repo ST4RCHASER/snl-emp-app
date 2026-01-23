@@ -45,9 +45,25 @@ import {
   type WorkLogAudit,
 } from "@/api/queries/worklogs";
 import { settingsQueries } from "@/api/queries/settings";
+import { calendarQueries, type Holiday } from "@/api/queries/calendar";
+import { useWindowStore } from "@/stores/windowStore";
 
 type ViewMode = "day" | "week" | "month";
 type DialogViewMode = "day" | "week" | "month";
+
+// Helper to format date as YYYY-MM-DD in local timezone (avoid UTC conversion issues)
+const formatLocalDate = (date: Date): string => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+// Helper to parse YYYY-MM-DD string as local date
+const parseLocalDate = (dateStr: string): Date => {
+  const [year, month, day] = dateStr.split("-").map(Number);
+  return new Date(year, month - 1, day);
+};
 
 export default function TeamDashboard() {
   const [viewMode, setViewMode] = useState<ViewMode>("week");
@@ -56,6 +72,7 @@ export default function TeamDashboard() {
     null,
   );
   const [selectedCellDate, setSelectedCellDate] = useState<string | null>(null);
+  const openWindow = useWindowStore((s) => s.openWindow);
 
   // Fetch team members
   const { data: teamMembers = [], isLoading: loadingTeam } = useQuery(
@@ -119,8 +136,8 @@ export default function TeamDashboard() {
     }
 
     return {
-      startDate: start.toISOString().split("T")[0],
-      endDate: end.toISOString().split("T")[0],
+      startDate: formatLocalDate(start),
+      endDate: formatLocalDate(end),
       dateLabels: labels,
     };
   }, [selectedDate, viewMode]);
@@ -129,6 +146,24 @@ export default function TeamDashboard() {
   const { data: teamSummary = {}, isLoading: loadingSummary } = useQuery(
     workLogQueries.teamSummary(startDate, endDate),
   );
+
+  // Fetch holidays for the current date range
+  const { data: holidaysData } = useQuery(
+    calendarQueries.holidays(
+      new Date(startDate).toISOString(),
+      new Date(endDate + "T23:59:59").toISOString(),
+    ),
+  );
+  const holidays = holidaysData?.holidays || [];
+
+  // Get holidays for a specific date
+  const getHolidaysForDate = (date: Date): Holiday[] => {
+    const dateStr = date.toDateString();
+    return holidays.filter((holiday) => {
+      const holidayDate = new Date(holiday.start);
+      return holidayDate.toDateString() === dateStr;
+    });
+  };
 
   const navigate = (direction: number) => {
     setSelectedDate((prev) => {
@@ -183,6 +218,22 @@ export default function TeamDashboard() {
       member.fullName ||
       member.user.name ||
       member.user.email.split("@")[0]
+    );
+  };
+
+  const openEmployeeCalendar = (member: TeamMember) => {
+    const displayName = getDisplayName(member);
+    openWindow(
+      "team-calendar",
+      `${displayName}'s Calendar`,
+      { width: 900, height: 650 },
+      {
+        employeeId: member.id,
+        employeeName: displayName,
+        employeeEmail: member.user.email,
+        employeeAvatar: member.avatar || member.user.image,
+      },
+      true, // forceNew - allow multiple employee calendars
     );
   };
 
@@ -342,22 +393,38 @@ export default function TeamDashboard() {
               >
                 Employee
               </div>
-              {dateLabels.map(({ date, label, isWeekend }) => (
-                <div
-                  key={date.toISOString()}
-                  style={{
-                    padding: 8,
-                    textAlign: "center",
-                    fontWeight: 500,
-                    fontSize: 11,
-                    color: isWeekend
-                      ? tokens.colorNeutralForeground3
-                      : undefined,
-                  }}
-                >
-                  {label}
-                </div>
-              ))}
+              {dateLabels.map(({ date, label, isWeekend }) => {
+                const dayHolidays = getHolidaysForDate(date);
+                const isHoliday = dayHolidays.length > 0;
+                return (
+                  <Tooltip
+                    key={date.toISOString()}
+                    content={isHoliday ? dayHolidays[0].summary : ""}
+                    relationship="label"
+                    visible={isHoliday ? undefined : false}
+                  >
+                    <div
+                      style={{
+                        padding: 8,
+                        textAlign: "center",
+                        fontWeight: isHoliday ? 600 : 500,
+                        fontSize: 11,
+                        color: isHoliday
+                          ? "#dc2626"
+                          : isWeekend
+                            ? tokens.colorNeutralForeground3
+                            : undefined,
+                        background: isHoliday
+                          ? "rgba(220, 38, 38, 0.1)"
+                          : undefined,
+                        borderRadius: 4,
+                      }}
+                    >
+                      {label}
+                    </div>
+                  </Tooltip>
+                );
+              })}
             </div>
 
             {/* Employee Rows */}
@@ -388,102 +455,123 @@ export default function TeamDashboard() {
                   }}
                 >
                   {/* Employee Info */}
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 8,
-                      padding: 8,
-                      background: hasOvertime
-                        ? "rgba(239, 68, 68, 0.15)"
-                        : tokens.colorNeutralBackground3,
-                      borderRadius: 4,
-                      borderLeft: hasOvertime
-                        ? "3px solid #ef4444"
-                        : "3px solid transparent",
-                    }}
+                  <Tooltip
+                    content="Click to view calendar"
+                    relationship="label"
                   >
-                    <div style={{ position: "relative" }}>
-                      <Avatar
-                        size={28}
-                        name={getDisplayName(member)}
-                        image={{
-                          src: member.avatar || member.user.image || undefined,
-                        }}
-                      />
-                      {hasOvertime && (
-                        <div
-                          style={{
-                            position: "absolute",
-                            top: -4,
-                            right: -4,
-                            background: "#ef4444",
-                            borderRadius: "50%",
-                            width: 16,
-                            height: 16,
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        padding: 8,
+                        background: hasOvertime
+                          ? "rgba(239, 68, 68, 0.15)"
+                          : tokens.colorNeutralBackground3,
+                        borderRadius: 4,
+                        borderLeft: hasOvertime
+                          ? "3px solid #ef4444"
+                          : "3px solid transparent",
+                        cursor: "pointer",
+                        transition: "background 0.1s",
+                      }}
+                      onClick={() => openEmployeeCalendar(member)}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = hasOvertime
+                          ? "rgba(239, 68, 68, 0.25)"
+                          : tokens.colorNeutralBackground3Hover;
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = hasOvertime
+                          ? "rgba(239, 68, 68, 0.15)"
+                          : tokens.colorNeutralBackground3;
+                      }}
+                    >
+                      <div style={{ position: "relative" }}>
+                        <Avatar
+                          size={28}
+                          name={getDisplayName(member)}
+                          image={{
+                            src:
+                              member.avatar || member.user.image || undefined,
                           }}
-                        >
-                          <Warning16Regular
-                            style={{ color: "#fff", fontSize: 10 }}
-                          />
-                        </div>
-                      )}
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div
-                        style={{
-                          fontWeight: 500,
-                          fontSize: 13,
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 4,
-                        }}
-                      >
-                        {getDisplayName(member)}
+                        />
                         {hasOvertime && (
-                          <Tooltip
-                            content={`${overtimeDays} day(s) with overtime this period. Total: +${totalOvertime.toFixed(1)}h over expected.`}
-                            relationship="label"
+                          <div
+                            style={{
+                              position: "absolute",
+                              top: -4,
+                              right: -4,
+                              background: "#ef4444",
+                              borderRadius: "50%",
+                              width: 16,
+                              height: 16,
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                            }}
                           >
-                            <Badge
-                              size="small"
-                              color="danger"
-                              style={{ fontSize: 9, padding: "0 4px" }}
-                            >
-                              +{totalOvertime.toFixed(0)}h
-                            </Badge>
-                          </Tooltip>
+                            <Warning16Regular
+                              style={{ color: "#fff", fontSize: 10 }}
+                            />
+                          </div>
                         )}
                       </div>
-                      {member.position && (
+                      <div style={{ flex: 1, minWidth: 0 }}>
                         <div
                           style={{
-                            fontSize: 11,
-                            color: tokens.colorNeutralForeground3,
+                            fontWeight: 500,
+                            fontSize: 13,
                             overflow: "hidden",
                             textOverflow: "ellipsis",
                             whiteSpace: "nowrap",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 4,
                           }}
                         >
-                          {member.position}
+                          {getDisplayName(member)}
+                          {hasOvertime && (
+                            <Tooltip
+                              content={`${overtimeDays} day(s) with overtime this period. Total: +${totalOvertime.toFixed(1)}h over expected.`}
+                              relationship="label"
+                            >
+                              <Badge
+                                size="small"
+                                color="danger"
+                                style={{ fontSize: 9, padding: "0 4px" }}
+                              >
+                                +{totalOvertime.toFixed(0)}h
+                              </Badge>
+                            </Tooltip>
+                          )}
                         </div>
-                      )}
+                        {member.position && (
+                          <div
+                            style={{
+                              fontSize: 11,
+                              color: tokens.colorNeutralForeground3,
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {member.position}
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </div>
+                  </Tooltip>
 
                   {/* Day Cells */}
                   {dateLabels.map(({ date, isWeekend }) => {
-                    const dateKey = date.toISOString().split("T")[0];
+                    const dateKey = formatLocalDate(date);
                     const hours = employeeSummary[dateKey] || 0;
                     const overtime = isOvertime(hours);
                     const overtimeLevel = getOvertimeLevel(hours);
                     const overtimeHours = hours - workHoursPerDay;
+                    const dayHolidays = getHolidaysForDate(date);
+                    const isHoliday = dayHolidays.length > 0;
 
                     return (
                       <Tooltip
@@ -498,6 +586,17 @@ export default function TeamDashboard() {
                                 day: "numeric",
                               })}
                             </div>
+                            {isHoliday && (
+                              <div
+                                style={{
+                                  color: "#fca5a5",
+                                  fontWeight: 600,
+                                  marginBottom: 4,
+                                }}
+                              >
+                                {dayHolidays[0].summary}
+                              </div>
+                            )}
                             <div style={{ fontWeight: 600 }}>
                               {hours} / {workHoursPerDay} hours
                             </div>
@@ -527,9 +626,12 @@ export default function TeamDashboard() {
                             setSelectedCellDate(dateKey);
                           }}
                           style={{
-                            background: isWeekend
-                              ? tokens.colorNeutralBackground2
-                              : getHeatColor(hours),
+                            background:
+                              isWeekend || isHoliday
+                                ? isHoliday
+                                  ? "rgba(220, 38, 38, 0.15)"
+                                  : tokens.colorNeutralBackground2
+                                : getHeatColor(hours),
                             padding: 4,
                             borderRadius: 4,
                             textAlign: "center",
@@ -559,6 +661,14 @@ export default function TeamDashboard() {
                         >
                           {isWeekend ? (
                             <span style={{ opacity: 0.3 }}>OFF</span>
+                          ) : isHoliday ? (
+                            hours > 0 ? (
+                              <span style={{ color: "#dc2626" }}>{hours}h</span>
+                            ) : (
+                              <span style={{ opacity: 0.5, color: "#dc2626" }}>
+                                HOL
+                              </span>
+                            )
                           ) : hours > 0 ? (
                             <>
                               {overtime && (
@@ -732,6 +842,25 @@ export default function TeamDashboard() {
           <Warning16Regular style={{ color: "#fef08a" }} />
           <span>Overtime</span>
         </div>
+        <div
+          style={{
+            height: 16,
+            width: 1,
+            background: tokens.colorNeutralStroke2,
+          }}
+        />
+        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <div
+            style={{
+              width: 14,
+              height: 14,
+              background: "rgba(220, 38, 38, 0.15)",
+              borderRadius: 2,
+              border: "1px solid #dc2626",
+            }}
+          />
+          <span>Holiday</span>
+        </div>
       </div>
 
       {/* Employee Detail Dialog */}
@@ -769,7 +898,8 @@ function EmployeeDetailDialog({
 
   // Calculate date range based on dialog view mode
   const { queryStartDate, queryEndDate, displayTitle } = useMemo(() => {
-    const clickedDateObj = new Date(clickedDate);
+    // Parse date string as local date (not UTC) to avoid timezone issues
+    const clickedDateObj = parseLocalDate(clickedDate);
 
     if (dialogViewMode === "day") {
       return {
@@ -783,16 +913,17 @@ function EmployeeDetailDialog({
         }),
       };
     } else if (dialogViewMode === "week") {
-      const day = clickedDateObj.getDay();
-      const diff = clickedDateObj.getDate() - day + (day === 0 ? -6 : 1);
+      const dayOfWeek = clickedDateObj.getDay();
+      const diff =
+        clickedDateObj.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1);
       const weekStart = new Date(clickedDateObj);
       weekStart.setDate(diff);
       const weekEnd = new Date(weekStart);
       weekEnd.setDate(weekEnd.getDate() + 6);
 
       return {
-        queryStartDate: weekStart.toISOString().split("T")[0],
-        queryEndDate: weekEnd.toISOString().split("T")[0],
+        queryStartDate: formatLocalDate(weekStart),
+        queryEndDate: formatLocalDate(weekEnd),
         displayTitle: `${weekStart.toLocaleDateString("en-US", {
           month: "short",
           day: "numeric",
@@ -804,20 +935,14 @@ function EmployeeDetailDialog({
       };
     } else {
       // month
-      const monthStart = new Date(
-        clickedDateObj.getFullYear(),
-        clickedDateObj.getMonth(),
-        1,
-      );
-      const monthEnd = new Date(
-        clickedDateObj.getFullYear(),
-        clickedDateObj.getMonth() + 1,
-        0,
-      );
+      const year = clickedDateObj.getFullYear();
+      const month = clickedDateObj.getMonth();
+      const monthStart = new Date(year, month, 1);
+      const monthEnd = new Date(year, month + 1, 0);
 
       return {
-        queryStartDate: monthStart.toISOString().split("T")[0],
-        queryEndDate: monthEnd.toISOString().split("T")[0],
+        queryStartDate: formatLocalDate(monthStart),
+        queryEndDate: formatLocalDate(monthEnd),
         displayTitle: clickedDateObj.toLocaleDateString("en-US", {
           month: "long",
           year: "numeric",
@@ -1222,9 +1347,7 @@ function EditWorkForEmployeeForm({
   const [title, setTitle] = useState(log.title);
   const [description, setDescription] = useState(log.description || "");
   const [hours, setHours] = useState(String(log.hours));
-  const [date, setDate] = useState(
-    new Date(log.date).toISOString().split("T")[0],
-  );
+  const [date, setDate] = useState(formatLocalDate(new Date(log.date)));
 
   const updateLog = useUpdateWorkLog();
 

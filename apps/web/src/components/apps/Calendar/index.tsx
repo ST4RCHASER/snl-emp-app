@@ -15,7 +15,11 @@ import {
   Location16Regular,
   Clock16Regular,
 } from "@fluentui/react-icons";
-import { calendarQueries, type CalendarEvent } from "@/api/queries/calendar";
+import {
+  calendarQueries,
+  type CalendarEvent,
+  type Holiday,
+} from "@/api/queries/calendar";
 import { useWindowRefresh } from "@/components/desktop/WindowContext";
 
 const useStyles = makeStyles({
@@ -173,6 +177,23 @@ const useStyles = makeStyles({
     fontSize: "10px",
     marginLeft: "auto",
   },
+  holidayBanner: {
+    padding: "8px 12px",
+    borderRadius: "6px",
+    backgroundColor: tokens.colorPaletteRedBackground2,
+    border: `1px solid ${tokens.colorPaletteRedBorder1}`,
+    marginBottom: "8px",
+  },
+  holidayText: {
+    fontWeight: 600,
+    fontSize: "13px",
+    color: tokens.colorPaletteRedForeground1,
+  },
+  holidayDescription: {
+    fontSize: "12px",
+    color: tokens.colorPaletteRedForeground2,
+    marginTop: "2px",
+  },
 });
 
 function formatTime(dateTime?: string, date?: string): string | undefined {
@@ -270,9 +291,13 @@ interface GroupedEvents {
   date: Date;
   events: CalendarEvent[];
   workingLocation?: CalendarEvent;
+  holidays: Holiday[];
 }
 
-function groupEventsByDate(events: CalendarEvent[]): GroupedEvents[] {
+function groupEventsByDate(
+  events: CalendarEvent[],
+  holidays: Holiday[],
+): GroupedEvents[] {
   const groups = new Map<
     string,
     {
@@ -280,9 +305,35 @@ function groupEventsByDate(events: CalendarEvent[]): GroupedEvents[] {
       date: Date;
       events: CalendarEvent[];
       workingLocation?: CalendarEvent;
+      holidays: Holiday[];
     }
   >();
 
+  // First, add all holidays to groups
+  holidays.forEach((holiday) => {
+    const date = new Date(holiday.start);
+    const dateKey = getDateKey(date);
+    const displayDate = date.toLocaleDateString("en-US", {
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
+
+    if (!groups.has(dateKey)) {
+      groups.set(dateKey, {
+        displayDate,
+        date,
+        events: [],
+        workingLocation: undefined,
+        holidays: [],
+      });
+    }
+
+    groups.get(dateKey)!.holidays.push(holiday);
+  });
+
+  // Then add events
   events.forEach((event) => {
     const date = getEventDate(event);
     const dateKey = getDateKey(date);
@@ -299,6 +350,7 @@ function groupEventsByDate(events: CalendarEvent[]): GroupedEvents[] {
         date,
         events: [],
         workingLocation: undefined,
+        holidays: [],
       });
     }
 
@@ -312,10 +364,12 @@ function groupEventsByDate(events: CalendarEvent[]): GroupedEvents[] {
     }
   });
 
-  return Array.from(groups.entries()).map(([dateKey, data]) => ({
-    dateKey,
-    ...data,
-  }));
+  return Array.from(groups.entries())
+    .map(([dateKey, data]) => ({
+      dateKey,
+      ...data,
+    }))
+    .sort((a, b) => a.date.getTime() - b.date.getTime());
 }
 
 export default function Calendar() {
@@ -345,6 +399,11 @@ export default function Calendar() {
 
   const { data, isLoading, error, refetch } = useQuery(
     calendarQueries.events(timeMin, timeMax),
+  );
+
+  // Fetch holidays
+  const { data: holidaysData } = useQuery(
+    calendarQueries.holidays(timeMin, timeMax),
   );
 
   const handlePrevMonth = () => {
@@ -459,7 +518,8 @@ export default function Calendar() {
   }
 
   const events = data?.events || [];
-  const groupedEvents = groupEventsByDate(events);
+  const holidays = holidaysData?.holidays || [];
+  const groupedEvents = groupEventsByDate(events, holidays);
 
   return (
     <div className={styles.container}>
@@ -485,7 +545,7 @@ export default function Calendar() {
       </div>
 
       <div className={styles.content} ref={contentRef}>
-        {events.length === 0 ? (
+        {events.length === 0 && holidays.length === 0 ? (
           <div className={styles.emptyState}>
             <span>No events this month</span>
           </div>
@@ -530,6 +590,24 @@ export default function Calendar() {
                       </div>
                     )}
                   </div>
+
+                  {/* Show holidays */}
+                  {group.holidays.length > 0 && (
+                    <div style={{ marginBottom: 8 }}>
+                      {group.holidays.map((holiday) => (
+                        <div key={holiday.id} className={styles.holidayBanner}>
+                          <div className={styles.holidayText}>
+                            {holiday.summary}
+                          </div>
+                          {holiday.description && (
+                            <div className={styles.holidayDescription}>
+                              {holiday.description}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
 
                   {group.events.length > 0 ? (
                     <div className={styles.eventsContainer}>
@@ -609,7 +687,7 @@ export default function Calendar() {
                         );
                       })}
                     </div>
-                  ) : (
+                  ) : group.holidays.length === 0 ? (
                     <div
                       style={{
                         fontSize: "12px",
@@ -620,7 +698,7 @@ export default function Calendar() {
                     >
                       No events
                     </div>
-                  )}
+                  ) : null}
                 </div>
               );
             })}

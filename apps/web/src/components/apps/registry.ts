@@ -97,6 +97,14 @@ export const appRegistry: AppDefinition[] = [
     defaultSize: { width: 950, height: 650 },
     roles: ["DEVELOPER"],
   },
+  {
+    id: "team-calendar",
+    name: "Team Calendar",
+    icon: "CalendarPerson",
+    component: lazy(() => import("./TeamCalendar")),
+    defaultSize: { width: 900, height: 650 },
+    roles: ["MANAGEMENT", "DEVELOPER"],
+  },
 ];
 
 export function getAppById(appId: string): AppDefinition | undefined {

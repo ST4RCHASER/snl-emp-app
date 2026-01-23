@@ -14,7 +14,11 @@ import type {
   CalendarWidget as CalendarWidgetType,
   CalendarStyle,
 } from "@/stores/widgetStore";
-import { calendarQueries, type CalendarEvent } from "@/api/queries/calendar";
+import {
+  calendarQueries,
+  type CalendarEvent,
+  type Holiday,
+} from "@/api/queries/calendar";
 
 interface CalendarWidgetProps {
   widget: CalendarWidgetType;
@@ -84,7 +88,13 @@ export function CalendarWidget({
     refetchInterval: 60 * 1000, // Auto-refresh every 1 minute
   });
 
+  // Fetch holidays
+  const { data: holidaysData } = useQuery(
+    calendarQueries.holidays(timeMin, timeMax),
+  );
+
   const events = eventsData?.events || [];
+  const holidays = holidaysData?.holidays || [];
 
   // Get events for a specific date
   const getEventsForDate = (date: Date): CalendarEvent[] => {
@@ -97,8 +107,21 @@ export function CalendarWidget({
     });
   };
 
+  // Get holidays for a specific date
+  const getHolidaysForDate = (date: Date): Holiday[] => {
+    const dateStr = date.toDateString();
+    return holidays.filter((holiday) => {
+      const holidayDate = new Date(holiday.start);
+      return holidayDate.toDateString() === dateStr;
+    });
+  };
+
   // Get today's events
   const todayEvents = useMemo(() => getEventsForDate(today), [events, today]);
+  const todayHolidays = useMemo(
+    () => getHolidaysForDate(today),
+    [holidays, today],
+  );
 
   useEffect(() => {
     if (!isDragging) {
@@ -211,42 +234,60 @@ export function CalendarWidget({
       const isTodayDate = isToday(day);
       const dateForDay = new Date(year, month, day);
       const dayEvents = getEventsForDate(dateForDay);
+      const dayHolidays = getHolidaysForDate(dateForDay);
       const hasEvents = dayEvents.length > 0;
+      const isHoliday = dayHolidays.length > 0;
 
       days.push(
-        <div
+        <Tooltip
           key={day}
-          style={{
-            width: 28,
-            height: 28,
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: 12,
-            borderRadius: "50%",
-            background: isTodayDate
-              ? tokens.colorBrandBackground
-              : "transparent",
-            color: isTodayDate ? "white" : tokens.colorNeutralForeground1,
-            fontWeight: isTodayDate ? 600 : 400,
-            position: "relative",
-          }}
+          content={
+            isHoliday ? dayHolidays.map((h) => h.summary).join(", ") : ""
+          }
+          relationship="label"
+          visible={isHoliday ? undefined : false}
         >
-          {day}
-          {hasEvents && (
-            <div
-              style={{
-                position: "absolute",
-                bottom: 2,
-                width: 4,
-                height: 4,
-                borderRadius: "50%",
-                background: isTodayDate ? "white" : tokens.colorBrandBackground,
-              }}
-            />
-          )}
-        </div>,
+          <div
+            style={{
+              width: 28,
+              height: 28,
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: 12,
+              borderRadius: "50%",
+              background: isTodayDate
+                ? tokens.colorBrandBackground
+                : isHoliday
+                  ? tokens.colorPaletteRedBackground2
+                  : "transparent",
+              color: isTodayDate
+                ? "white"
+                : isHoliday
+                  ? tokens.colorPaletteRedForeground1
+                  : tokens.colorNeutralForeground1,
+              fontWeight: isTodayDate || isHoliday ? 600 : 400,
+              position: "relative",
+            }}
+          >
+            {day}
+            {hasEvents && (
+              <div
+                style={{
+                  position: "absolute",
+                  bottom: 2,
+                  width: 4,
+                  height: 4,
+                  borderRadius: "50%",
+                  background: isTodayDate
+                    ? "white"
+                    : tokens.colorBrandBackground,
+                }}
+              />
+            )}
+          </div>
+        </Tooltip>,
       );
     }
 
@@ -283,6 +324,8 @@ export function CalendarWidget({
         {weekDays.map((date, i) => {
           const isCurrentDay = date.toDateString() === today.toDateString();
           const dayEvents = getEventsForDate(date);
+          const dayHolidays = getHolidaysForDate(date);
+          const isHoliday = dayHolidays.length > 0;
           return (
             <div
               key={i}
@@ -293,7 +336,9 @@ export function CalendarWidget({
                 borderRadius: 6,
                 background: isCurrentDay
                   ? tokens.colorBrandBackground
-                  : "transparent",
+                  : isHoliday
+                    ? tokens.colorPaletteRedBackground2
+                    : "transparent",
                 marginBottom: 2,
               }}
             >
@@ -303,7 +348,9 @@ export function CalendarWidget({
                   fontSize: 11,
                   color: isCurrentDay
                     ? "white"
-                    : tokens.colorNeutralForeground3,
+                    : isHoliday
+                      ? tokens.colorPaletteRedForeground1
+                      : tokens.colorNeutralForeground3,
                 }}
               >
                 {DAYS[date.getDay()]}
@@ -311,16 +358,33 @@ export function CalendarWidget({
               <span
                 style={{
                   fontSize: 14,
-                  fontWeight: isCurrentDay ? 600 : 400,
+                  fontWeight: isCurrentDay || isHoliday ? 600 : 400,
                   color: isCurrentDay
                     ? "white"
-                    : tokens.colorNeutralForeground1,
+                    : isHoliday
+                      ? tokens.colorPaletteRedForeground1
+                      : tokens.colorNeutralForeground1,
                   minWidth: 20,
                 }}
               >
                 {date.getDate()}
               </span>
-              {dayEvents.length > 0 && (
+              {isHoliday ? (
+                <span
+                  style={{
+                    marginLeft: 8,
+                    fontSize: 10,
+                    color: tokens.colorPaletteRedForeground1,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                    flex: 1,
+                    fontWeight: 500,
+                  }}
+                >
+                  {dayHolidays[0].summary}
+                </span>
+              ) : dayEvents.length > 0 ? (
                 <span
                   style={{
                     marginLeft: 8,
@@ -336,7 +400,7 @@ export function CalendarWidget({
                 >
                   {dayEvents.length} event{dayEvents.length > 1 ? "s" : ""}
                 </span>
-              )}
+              ) : null}
             </div>
           );
         })}
@@ -382,6 +446,22 @@ export function CalendarWidget({
         >
           {today.getFullYear()}
         </div>
+        {/* Show holiday banner if today is a holiday */}
+        {todayHolidays.length > 0 && (
+          <div
+            style={{
+              marginTop: 8,
+              padding: "6px 8px",
+              background: tokens.colorPaletteRedBackground2,
+              borderRadius: 4,
+              fontSize: 11,
+              fontWeight: 600,
+              color: tokens.colorPaletteRedForeground1,
+            }}
+          >
+            {todayHolidays.map((h) => h.summary).join(", ")}
+          </div>
+        )}
         <div
           style={{
             marginTop: 12,
