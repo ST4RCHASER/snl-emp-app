@@ -98,6 +98,14 @@ export const appRegistry: AppDefinition[] = [
     roles: ["DEVELOPER"],
   },
   {
+    id: "youtube",
+    name: "iframe test / youtube",
+    icon: "Video",
+    component: lazy(() => import("./YouTube")),
+    defaultSize: { width: 800, height: 550 },
+    roles: ["DEVELOPER"],
+  },
+  {
     id: "team-calendar",
     name: "Team Calendar",
     icon: "CalendarPerson",

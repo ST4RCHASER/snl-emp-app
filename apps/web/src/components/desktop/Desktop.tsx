@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useWindowStore } from "@/stores/windowStore";
+import { tokens } from "@fluentui/react-components";
+import {
+  useWindowStore,
+  type SerializableWindowState,
+} from "@/stores/windowStore";
+import { useDesktopStore, type VirtualDesktop } from "@/stores/desktopStore";
 import {
   useWidgetStore,
   generateWidgetId,
@@ -28,6 +33,7 @@ import {
   type BackgroundFit,
   type IconPositions,
   type DesktopShortcuts,
+  type AppSizes,
 } from "@/api/queries/preferences";
 import { announcementQueries } from "@/api/queries/announcements";
 import { logAction } from "@/api/queries/audit";
@@ -53,6 +59,29 @@ export function Desktop() {
   const constrainWindowsToScreen = useWindowStore(
     (s) => s.constrainWindowsToScreen,
   );
+  const snapWindow = useWindowStore((s) => s.snapWindow);
+  const unSnapWindow = useWindowStore((s) => s.unSnapWindow);
+
+  // Desktop store
+  const activeDesktopId = useDesktopStore((s) => s.activeDesktopId);
+  const desktops = useDesktopStore((s) => s.desktops);
+  const isDesktopStoreLoaded = useDesktopStore((s) => s.isLoaded);
+  const loadDesktopFromPreferences = useDesktopStore(
+    (s) => s.loadFromPreferences,
+  );
+  const getDesktopState = useDesktopStore((s) => s.getState);
+
+  // Window store loading
+  const isWindowStoreLoaded = useWindowStore((s) => s.isLoaded);
+  const loadWindowFromPreferences = useWindowStore(
+    (s) => s.loadFromPreferences,
+  );
+  const getWindowSerializableState = useWindowStore(
+    (s) => s.getSerializableState,
+  );
+
+  // Filter windows for the active desktop
+  const desktopWindows = windows.filter((w) => w.desktopId === activeDesktopId);
 
   // Widget store
   const widgets = useWidgetStore((s) => s.widgets);
@@ -85,10 +114,26 @@ export function Desktop() {
     appId: string;
   } | null>(null);
 
-  const { data: preferences } = useQuery(preferencesQueries.user);
+  // Marquee selection state
+  const [marquee, setMarquee] = useState<{
+    startX: number;
+    startY: number;
+    currentX: number;
+    currentY: number;
+  } | null>(null);
+  const [selectedIcons, setSelectedIcons] = useState<Set<string>>(new Set());
+  const desktopRef = useRef<HTMLDivElement>(null);
+
+  const { data: preferences, isFetching: isPreferencesFetching } = useQuery(
+    preferencesQueries.user,
+  );
   const { data: unreadStatus } = useQuery(announcementQueries.unread);
   const systemIsDark = useSystemTheme();
   const updatePreferences = useUpdatePreferences();
+
+  // Sync indicator states
+  const isSyncing = updatePreferences.isPending;
+  const isLoading = isPreferencesFetching;
 
   // Cast preferences to typed version
   const prefs = preferences as
@@ -98,9 +143,16 @@ export function Desktop() {
         backgroundFit?: string;
         backgroundColor?: string;
         guiScale?: number;
+        desktopIconSize?: number;
+        taskbarSize?: number;
+        appDrawerIconSize?: number;
         iconPositions?: IconPositions;
         widgets?: Widget[];
         desktopShortcuts?: DesktopShortcuts;
+        virtualDesktops?: VirtualDesktop[];
+        activeDesktopId?: string;
+        windowStates?: SerializableWindowState[];
+        appSizes?: AppSizes;
       }
     | undefined;
 
@@ -158,6 +210,80 @@ export function Desktop() {
     }
   }, [prefs, setWidgets]);
 
+  // Load desktop and window state from preferences
+  const desktopStateLoadedRef = useRef(false);
+  useEffect(() => {
+    if (prefs && !desktopStateLoadedRef.current) {
+      // Load desktop state
+      loadDesktopFromPreferences(
+        prefs.virtualDesktops || null,
+        prefs.activeDesktopId || null,
+      );
+      // Load window state
+      loadWindowFromPreferences(
+        prefs.windowStates || null,
+        prefs.appSizes || null,
+      );
+      desktopStateLoadedRef.current = true;
+    }
+  }, [prefs, loadDesktopFromPreferences, loadWindowFromPreferences]);
+
+  // Debounced save for window and desktop state changes
+  const saveStateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastSavedStateRef = useRef<string>("");
+
+  const saveDesktopAndWindowState = useCallback(() => {
+    if (!isDesktopStoreLoaded || !isWindowStoreLoaded) return;
+
+    const desktopState = getDesktopState();
+    const windowState = getWindowSerializableState();
+
+    // Create a serialized version to compare
+    const currentState = JSON.stringify({
+      virtualDesktops: desktopState.desktops,
+      activeDesktopId: desktopState.activeDesktopId,
+      windowStates: windowState.windowStates,
+      appSizes: windowState.appSizes,
+    });
+
+    // Only save if state actually changed
+    if (currentState === lastSavedStateRef.current) return;
+
+    if (saveStateTimeoutRef.current) {
+      clearTimeout(saveStateTimeoutRef.current);
+    }
+
+    saveStateTimeoutRef.current = setTimeout(() => {
+      lastSavedStateRef.current = currentState;
+      updatePreferences.mutate({
+        virtualDesktops: desktopState.desktops,
+        activeDesktopId: desktopState.activeDesktopId,
+        windowStates: windowState.windowStates,
+        appSizes: windowState.appSizes,
+      });
+    }, 1000); // Debounce for 1 second
+  }, [
+    isDesktopStoreLoaded,
+    isWindowStoreLoaded,
+    getDesktopState,
+    getWindowSerializableState,
+    updatePreferences,
+  ]);
+
+  // Save state whenever windows or desktops change
+  useEffect(() => {
+    if (isDesktopStoreLoaded && isWindowStoreLoaded) {
+      saveDesktopAndWindowState();
+    }
+  }, [
+    windows,
+    desktops,
+    activeDesktopId,
+    isDesktopStoreLoaded,
+    isWindowStoreLoaded,
+    saveDesktopAndWindowState,
+  ]);
+
   // Constrain widgets to screen after they are loaded
   const hasConstrainedWidgetsRef = useRef(false);
   useEffect(() => {
@@ -202,6 +328,9 @@ export function Desktop() {
   const backgroundFit = (prefs?.backgroundFit as BackgroundFit) || "cover";
   const backgroundColor = prefs?.backgroundColor || "#1a1a1a";
   const guiScale = prefs?.guiScale || 1.0;
+  const desktopIconSize = prefs?.desktopIconSize || 1.0;
+  const taskbarSize = prefs?.taskbarSize || 1.0;
+  const appDrawerIconSize = prefs?.appDrawerIconSize || 1.0;
   const iconPositions = (prefs?.iconPositions as IconPositions) || {};
 
   // Desktop shortcuts - default to some common apps if not set
@@ -244,20 +373,21 @@ export function Desktop() {
     if (prefs && !hasConstrainedIconsRef.current) {
       const screenWidth = window.innerWidth;
       const screenHeight = window.innerHeight;
-      const taskbarHeight = 48;
+      const taskbarHeight = 48 * taskbarSize;
       const gridSize = 90; // Base grid size (unscaled)
       const margin = 10;
       const minVisible = 40;
 
-      // Calculate max grid columns and rows
+      // Calculate max grid columns and rows (using desktopIconSize for grid scaling)
       const maxCols = Math.max(
         1,
-        Math.floor((screenWidth - margin) / (gridSize * guiScale)),
+        Math.floor((screenWidth - margin) / (gridSize * desktopIconSize)),
       );
       const maxRows = Math.max(
         1,
         Math.floor(
-          (screenHeight - taskbarHeight - margin) / (gridSize * guiScale),
+          (screenHeight - taskbarHeight - margin) /
+            (gridSize * desktopIconSize),
         ),
       );
 
@@ -377,41 +507,56 @@ export function Desktop() {
       }
       hasConstrainedIconsRef.current = true;
     }
-  }, [prefs, iconPositions, guiScale, updatePreferences, shortcutApps]);
+  }, [
+    prefs,
+    iconPositions,
+    desktopIconSize,
+    taskbarSize,
+    updatePreferences,
+    shortcutApps,
+  ]);
 
   // On mobile, show the app drawer instead of the desktop
   if (isMobile) {
     return <MobileAppDrawer backgroundImage={backgroundImage} />;
   }
 
-  // Grid settings for icon snapping - scale with GUI
+  // Grid settings for icon snapping
+  // BASE values are used for storage (always stored at 1.0 scale)
+  // SCALED values are used for display
   const BASE_GRID_SIZE = 90;
   const BASE_ICON_MARGIN = 10;
-  const GRID_SIZE = BASE_GRID_SIZE * guiScale;
-  const ICON_MARGIN = BASE_ICON_MARGIN * guiScale;
+  const GRID_SIZE = BASE_GRID_SIZE * desktopIconSize;
+  const ICON_MARGIN = BASE_ICON_MARGIN * desktopIconSize;
 
-  // Calculate grid position for snapping
+  // Calculate grid position for snapping (returns scaled position)
   const snapToGrid = useCallback(
     (x: number, y: number) => {
-      const snappedX = Math.round(x / GRID_SIZE) * GRID_SIZE + ICON_MARGIN;
-      const snappedY = Math.round(y / GRID_SIZE) * GRID_SIZE + ICON_MARGIN;
+      // Calculate which grid cell to snap to
+      const snappedCol = Math.round((x - ICON_MARGIN) / GRID_SIZE);
+      const snappedRow = Math.round((y - ICON_MARGIN) / GRID_SIZE);
+      // Ensure non-negative
+      const clampedCol = Math.max(0, snappedCol);
+      const clampedRow = Math.max(0, snappedRow);
+      const snappedX = clampedCol * GRID_SIZE + ICON_MARGIN;
+      const snappedY = clampedRow * GRID_SIZE + ICON_MARGIN;
       return { x: snappedX, y: snappedY };
     },
     [GRID_SIZE, ICON_MARGIN],
   );
 
-  // Get position for an app icon
+  // Get position for an app icon (returns scaled position for display)
   const getIconPosition = useCallback(
     (shortcutId: string, index: number) => {
       const savedPos = iconPositions[shortcutId];
       if (savedPos) {
+        // Saved positions are stored at base scale (1.0), scale them for display
+        const scaledX = savedPos.x * desktopIconSize;
+        const scaledY = savedPos.y * desktopIconSize;
+
         // Validate that position is within reasonable bounds
         const screenWidth = window.innerWidth;
         const screenHeight = window.innerHeight;
-        const scaledX = savedPos.x * guiScale;
-        const scaledY = savedPos.y * guiScale;
-
-        // If position is way off screen, use default instead
         if (
           scaledX >= 0 &&
           scaledX < screenWidth - 40 &&
@@ -421,23 +566,24 @@ export function Desktop() {
           return { x: scaledX, y: scaledY };
         }
       }
-      // Default grid position (first column, stacked by index)
+      // Default grid position (first column, stacked by index) - already scaled
       return {
         x: ICON_MARGIN,
         y: index * GRID_SIZE + ICON_MARGIN,
       };
     },
-    [iconPositions, GRID_SIZE, ICON_MARGIN, guiScale],
+    [iconPositions, GRID_SIZE, ICON_MARGIN, desktopIconSize],
   );
 
   // Handle icon drag end
   const handleIconDragEnd = useCallback(
     (shortcutId: string, x: number, y: number) => {
+      // Snap the dragged position to grid (x, y are in scaled units)
       const snapped = snapToGrid(x, y);
-      // Save positions in unscaled form so they work across different scales
+      // Convert back to base scale (1.0) for storage
       const unscaledPosition = {
-        x: snapped.x / guiScale,
-        y: snapped.y / guiScale,
+        x: snapped.x / desktopIconSize,
+        y: snapped.y / desktopIconSize,
       };
       const newPositions = {
         ...iconPositions,
@@ -445,7 +591,7 @@ export function Desktop() {
       };
       updatePreferences.mutate({ iconPositions: newPositions });
     },
-    [iconPositions, snapToGrid, updatePreferences, guiScale],
+    [iconPositions, snapToGrid, updatePreferences, desktopIconSize],
   );
 
   // Context menu handlers
@@ -460,6 +606,80 @@ export function Desktop() {
 
   const handleCloseContextMenu = useCallback(() => {
     setContextMenu(null);
+  }, []);
+
+  // Marquee selection handlers
+  const handleDesktopMouseDown = useCallback((e: React.MouseEvent) => {
+    // Only start marquee on left click directly on desktop background
+    if (e.button !== 0 || e.target !== e.currentTarget) return;
+
+    const rect = desktopRef.current?.getBoundingClientRect();
+    if (!rect) return;
+
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    setMarquee({ startX: x, startY: y, currentX: x, currentY: y });
+    setSelectedIcons(new Set()); // Clear previous selection
+  }, []);
+
+  const handleDesktopMouseMove = useCallback(
+    (e: React.MouseEvent) => {
+      if (!marquee) return;
+
+      const rect = desktopRef.current?.getBoundingClientRect();
+      if (!rect) return;
+
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+
+      setMarquee((prev) =>
+        prev ? { ...prev, currentX: x, currentY: y } : null,
+      );
+
+      // Calculate marquee bounds
+      const left = Math.min(marquee.startX, x);
+      const top = Math.min(marquee.startY, y);
+      const right = Math.max(marquee.startX, x);
+      const bottom = Math.max(marquee.startY, y);
+
+      // Check which icons intersect with marquee
+      const newSelected = new Set<string>();
+      shortcutApps.forEach((app, index) => {
+        const pos = getIconPosition(app.shortcutId, index);
+        const iconWidth = 5 * 16 * desktopIconSize; // containerWidth in pixels
+        const iconHeight = 5 * 16 * desktopIconSize; // approximate height
+
+        // Check intersection
+        const iconLeft = pos.x;
+        const iconTop = pos.y;
+        const iconRight = pos.x + iconWidth;
+        const iconBottom = pos.y + iconHeight;
+
+        if (
+          iconLeft < right &&
+          iconRight > left &&
+          iconTop < bottom &&
+          iconBottom > top
+        ) {
+          newSelected.add(app.shortcutId);
+        }
+      });
+
+      setSelectedIcons(newSelected);
+    },
+    [marquee, shortcutApps, getIconPosition, desktopIconSize],
+  );
+
+  const handleDesktopMouseUp = useCallback(() => {
+    setMarquee(null);
+  }, []);
+
+  // Clear selection when clicking on empty desktop area
+  const handleDesktopClick = useCallback((e: React.MouseEvent) => {
+    if (e.target === e.currentTarget) {
+      setSelectedIcons(new Set());
+    }
   }, []);
 
   // Widget handlers
@@ -624,8 +844,8 @@ export function Desktop() {
         const dropY = e.clientY - desktopRect.top;
         const snapped = snapToGrid(dropX, dropY);
         const unscaledPosition = {
-          x: snapped.x / guiScale,
-          y: snapped.y / guiScale,
+          x: snapped.x / desktopIconSize,
+          y: snapped.y / desktopIconSize,
         };
 
         // Add shortcut and position in single update
@@ -641,7 +861,13 @@ export function Desktop() {
         });
       }
     },
-    [desktopShortcuts, iconPositions, updatePreferences, snapToGrid, guiScale],
+    [
+      desktopShortcuts,
+      iconPositions,
+      updatePreferences,
+      snapToGrid,
+      desktopIconSize,
+    ],
   );
 
   const handleDesktopDragOver = useCallback((e: React.DragEvent) => {
@@ -699,7 +925,14 @@ export function Desktop() {
   const handleOpenApp = (appId: string, forceNew: boolean = false) => {
     const app = getAppById(appId);
     if (app) {
-      openWindow(appId, app.name, app.defaultSize, undefined, forceNew);
+      openWindow(
+        appId,
+        app.name,
+        app.defaultSize,
+        undefined,
+        forceNew,
+        activeDesktopId,
+      );
       // Log the app open action
       logAction("open_app", "app", `Opened ${app.name}`, {
         appId,
@@ -723,13 +956,20 @@ export function Desktop() {
 
   return (
     <div
+      ref={desktopRef}
       className="desktop"
       style={{
         ...getBackgroundStyle(),
         backgroundColor: getDesktopBgColor(),
-        paddingBottom: "3rem", // Account for taskbar height (rem-based for scaling)
+        paddingBottom: `${3 * taskbarSize}rem`, // Account for taskbar height (scales with taskbar size)
+        userSelect: marquee ? "none" : "auto", // Prevent text selection during marquee drag
       }}
       onContextMenu={handleContextMenu}
+      onMouseDown={handleDesktopMouseDown}
+      onMouseMove={handleDesktopMouseMove}
+      onMouseUp={handleDesktopMouseUp}
+      onMouseLeave={handleDesktopMouseUp}
+      onClick={handleDesktopClick}
       onDrop={handleDesktopDrop}
       onDragOver={handleDesktopDragOver}
     >
@@ -741,7 +981,7 @@ export function Desktop() {
             top: 0,
             left: 0,
             right: 0,
-            bottom: 48, // Above taskbar
+            bottom: 48 * taskbarSize, // Above taskbar (scales with taskbar size)
             pointerEvents: "none",
             zIndex: 0,
             backgroundImage: `
@@ -756,7 +996,9 @@ export function Desktop() {
           {Array.from({ length: Math.ceil(window.innerWidth / GRID_SIZE) }).map(
             (_, col) =>
               Array.from({
-                length: Math.ceil((window.innerHeight - 48) / GRID_SIZE),
+                length: Math.ceil(
+                  (window.innerHeight - 48 * taskbarSize) / GRID_SIZE,
+                ),
               }).map((_, row) => (
                 <div
                   key={`${col}-${row}`}
@@ -775,6 +1017,23 @@ export function Desktop() {
         </div>
       )}
 
+      {/* Marquee selection rectangle - below windows (z-index 0) */}
+      {marquee && (
+        <div
+          style={{
+            position: "absolute",
+            left: Math.min(marquee.startX, marquee.currentX),
+            top: Math.min(marquee.startY, marquee.currentY),
+            width: Math.abs(marquee.currentX - marquee.startX),
+            height: Math.abs(marquee.currentY - marquee.startY),
+            border: `1px solid ${tokens.colorBrandBackground}`,
+            background: `color-mix(in srgb, ${tokens.colorBrandBackground} 20%, transparent)`,
+            pointerEvents: "none",
+            zIndex: 0,
+          }}
+        />
+      )}
+
       {/* Desktop Icons - only shortcuts */}
       {shortcutApps.map((app, index) => {
         const pos = getIconPosition(app.shortcutId, index);
@@ -783,6 +1042,8 @@ export function Desktop() {
             key={app.shortcutId}
             app={app}
             position={pos}
+            iconSize={desktopIconSize}
+            isSelected={selectedIcons.has(app.shortcutId)}
             onClick={() => handleOpenApp(app.id, true)}
             onDragEnd={(x, y) => handleIconDragEnd(app.shortcutId, x, y)}
             onContextMenu={(e) =>
@@ -858,7 +1119,7 @@ export function Desktop() {
       )}
 
       {/* Windows */}
-      {windows.map((win) => {
+      {desktopWindows.map((win) => {
         // Handle dynamic app IDs like "complaint-chat-{id}" -> "complaint-chat"
         const baseAppId = win.appId.startsWith("complaint-chat-")
           ? "complaint-chat"
@@ -880,6 +1141,8 @@ export function Desktop() {
             onFocus={() => focusWindow(win.id)}
             onDragStop={(pos) => updatePosition(win.id, pos)}
             onResizeStop={(size) => updateSize(win.id, size)}
+            onSnap={(zone) => snapWindow(win.id, zone)}
+            onUnSnap={() => unSnapWindow(win.id)}
           >
             <WindowContext.Provider
               value={{ refreshKey: win.refreshKey, windowProps: win.props }}
@@ -894,6 +1157,9 @@ export function Desktop() {
       <Taskbar
         onOpenDrawer={() => setIsDrawerOpen(!isDrawerOpen)}
         isDrawerOpen={isDrawerOpen}
+        isSyncing={isSyncing}
+        isLoading={isLoading}
+        taskbarSize={taskbarSize}
       />
 
       {/* App Drawer */}
@@ -903,6 +1169,7 @@ export function Desktop() {
           onOpenApp={(appId) => handleOpenApp(appId, true)}
           onAddShortcut={handleAddShortcut}
           onClose={() => setIsDrawerOpen(false)}
+          iconSize={appDrawerIconSize}
         />
       )}
 

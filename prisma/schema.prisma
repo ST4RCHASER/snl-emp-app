@@ -42,12 +42,12 @@ enum ComplaintStatus {
 // ==================== AUTH TABLES (Better Auth) ====================
 
 model User {
-  id            String    @id @default(cuid())
-  email         String    @unique
-  emailVerified Boolean   @default(false)
+  id            String  @id @default(cuid())
+  email         String  @unique
+  emailVerified Boolean @default(false)
   name          String?
   image         String?
-  role          Role      @default(EMPLOYEE)
+  role          Role    @default(EMPLOYEE)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -70,15 +70,24 @@ model UserPreferences {
   id     String @id @default(cuid())
   userId String @unique
 
-  theme           String  @default("system") // "system", "light", or "dark"
-  accentColor     String  @default("#0078d4") // Hex color
-  backgroundImage String? // URL to background image
-  backgroundFit   String  @default("cover") // "cover", "contain", "fill", "center"
-  backgroundColor String  @default("#1a1a1a") // Background color for fit modes
-  guiScale        Float   @default(1.0) // GUI scaling factor 0.1 - 5.0
-  iconPositions    Json?   // { appId: { x: number, y: number } }
-  widgets          Json?   // Array of widget objects
-  desktopShortcuts Json?   // Array of app IDs shown on desktop
+  theme             String  @default("system") // "system", "light", or "dark"
+  accentColor       String  @default("#0078d4") // Hex color
+  backgroundImage   String? // URL to background image
+  backgroundFit     String  @default("cover") // "cover", "contain", "fill", "center"
+  backgroundColor   String  @default("#1a1a1a") // Background color for fit modes
+  guiScale          Float   @default(1.0) // GUI scaling factor 0.1 - 5.0
+  desktopIconSize   Float   @default(1.0) // Desktop icon size multiplier
+  taskbarSize       Float   @default(1.0) // Taskbar size multiplier
+  appDrawerIconSize Float   @default(1.0) // App drawer icon size multiplier
+  iconPositions     Json? // { appId: { x: number, y: number } }
+  widgets           Json? // Array of widget objects
+  desktopShortcuts  Json? // Array of app IDs shown on desktop
+
+  // Virtual desktops and window state
+  virtualDesktops Json? // Array of { id, name, order }
+  activeDesktopId String? // Currently active desktop ID
+  windowStates    Json? // Array of window state objects
+  appSizes        Json? // { appId: { width, height } } - remembered window sizes
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -201,11 +210,11 @@ model LeaveRequest {
   id         String @id @default(cuid())
   employeeId String
 
-  type        LeaveType   @default(ANNUAL)
+  type        LeaveType @default(ANNUAL)
   reason      String
   startDate   DateTime
   endDate     DateTime
-  isHalfDay   Boolean     @default(false)
+  isHalfDay   Boolean   @default(false)
   halfDayType String? // "morning" or "afternoon" if isHalfDay
 
   status LeaveStatus @default(PENDING)
@@ -244,10 +253,10 @@ model GlobalSettings {
   id String @id @default("global")
 
   // Leave quotas per year
-  maxAnnualLeaveDays      Int @default(10)
-  maxSickLeaveDays        Int @default(30)
-  maxPersonalLeaveDays    Int @default(7)
-  maxBirthdayLeaveDays    Int @default(1)
+  maxAnnualLeaveDays   Int @default(10)
+  maxSickLeaveDays     Int @default(30)
+  maxPersonalLeaveDays Int @default(7)
+  maxBirthdayLeaveDays Int @default(1)
 
   // Annual leave carry-over settings
   annualLeaveCarryoverMax Int @default(3)
@@ -274,8 +283,8 @@ model WorkLog {
   employeeId String
 
   title       String
-  description String? @db.Text
-  hours       Float   // Hours worked (can be decimal like 1.5)
+  description String?  @db.Text
+  hours       Float // Hours worked (can be decimal like 1.5)
   date        DateTime @db.Date // The date of work
 
   // Who created this entry (for audit - manager can add for employee)
@@ -309,9 +318,9 @@ model WorkLogAudit {
   id        String @id @default(cuid())
   workLogId String
 
-  action    WorkLogAuditAction
-  userId    String // Who performed the action
-  userName  String? // Cached name for display
+  action   WorkLogAuditAction
+  userId   String // Who performed the action
+  userName String? // Cached name for display
 
   // Snapshot of changes (for updates)
   oldValues Json? // Previous values before change
@@ -363,7 +372,7 @@ model ComplaintMessage {
   attachmentUrl  String? // URL from m1r.ai
   attachmentName String? // Original filename
   attachmentType String? // MIME type (e.g., "image/png", "application/pdf")
-  attachmentSize Int?    // File size in bytes
+  attachmentSize Int? // File size in bytes
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -381,10 +390,10 @@ model Announcement {
 
   title   String
   content String @db.Text // Rich text / BBS style content
-  images  Json?  // Array of image URLs
+  images  Json? // Array of image URLs
 
-  order     Int      @default(0) // For ordering (lower = higher priority)
-  isActive  Boolean  @default(true)
+  order     Int     @default(0) // For ordering (lower = higher priority)
+  isActive  Boolean @default(true)
   createdBy String // User ID of HR who created
 
   createdAt DateTime @default(now())
@@ -414,17 +423,17 @@ model Note {
   id     String @id @default(cuid())
   userId String
 
-  title    String   @default("")
-  content  String   @db.Text // Rich text content (HTML)
-  preview  String?  // Plain text preview for sidebar
+  title   String  @default("")
+  content String  @db.Text // Rich text content (HTML)
+  preview String? // Plain text preview for sidebar
 
-  isPinned  Boolean @default(false)
-  isLocked  Boolean @default(false) // Password protected
-  lockHash  String? // Hashed password for locked notes
+  isPinned Boolean @default(false)
+  isLocked Boolean @default(false) // Password protected
+  lockHash String? // Hashed password for locked notes
 
-  color     String? // Background color for the note
+  color String? // Background color for the note
 
-  folderId  String? // Optional folder organization
+  folderId String? // Optional folder organization
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -456,19 +465,19 @@ model NoteFolder {
 // ==================== AUDIT LOG SYSTEM (Developer Only) ====================
 
 model ActionLog {
-  id     String @id @default(cuid())
+  id     String  @id @default(cuid())
   userId String?
 
   // Action details
-  action      String   // e.g., "sign_in", "sign_out", "open_app", "click", "submit", "browse"
-  category    String   // e.g., "auth", "app", "navigation", "form"
-  description String?  // Human-readable description
-  metadata    Json?    // Additional context (app name, button clicked, etc.)
+  action      String // e.g., "sign_in", "sign_out", "open_app", "click", "submit", "browse"
+  category    String // e.g., "auth", "app", "navigation", "form"
+  description String? // Human-readable description
+  metadata    Json? // Additional context (app name, button clicked, etc.)
 
   // Client info
-  ipAddress   String?
-  userAgent   String?
-  sessionId   String?
+  ipAddress String?
+  userAgent String?
+  sessionId String?
 
   createdAt DateTime @default(now())
 
@@ -480,21 +489,21 @@ model ActionLog {
 }
 
 model ApiLog {
-  id     String @id @default(cuid())
+  id     String  @id @default(cuid())
   userId String?
 
   // Request details
-  method   String   // GET, POST, PUT, DELETE, etc.
-  path     String   // API endpoint path
-  query    Json?    // Query parameters
-  body     Json?    // Request body (sanitized - no passwords)
-  headers  Json?    // Request headers (sanitized)
+  method  String // GET, POST, PUT, DELETE, etc.
+  path    String // API endpoint path
+  query   Json? // Query parameters
+  body    Json? // Request body (sanitized - no passwords)
+  headers Json? // Request headers (sanitized)
 
   // Response details
   statusCode   Int
-  responseTime Int      // Response time in milliseconds
-  responseSize Int?     // Response size in bytes
-  error        String?  // Error message if any
+  responseTime Int // Response time in milliseconds
+  responseSize Int? // Response size in bytes
+  error        String? // Error message if any
 
   // Client info
   ipAddress String?

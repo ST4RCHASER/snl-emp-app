@@ -14,28 +14,37 @@ import {
   Note24Regular,
   Clock24Regular,
   DocumentSearch24Regular,
+  Video24Regular,
 } from "@fluentui/react-icons";
 import type { AppDefinition } from "../apps/registry";
 
-const iconMap: Record<string, React.ReactNode> = {
-  People: <People24Regular />,
-  PeopleTeam: <PeopleTeam24Regular />,
-  Calendar: <Calendar24Regular />,
-  CalendarLtr: <CalendarLtr24Regular />,
-  CalendarPerson: <CalendarPerson24Regular />,
-  ChatWarning: <ChatWarning24Regular />,
-  Chat: <Chat24Regular />,
-  Settings: <Settings24Regular />,
-  Person: <Person24Regular />,
-  Megaphone: <Megaphone24Regular />,
-  Note: <Note24Regular />,
-  Clock: <Clock24Regular />,
-  DocumentSearch: <DocumentSearch24Regular />,
+const getIcon = (iconName: string, size: number = 1.0): React.ReactNode => {
+  const iconSize = Math.round(24 * size);
+  const iconStyle = { width: iconSize, height: iconSize };
+  const iconMap: Record<string, React.ReactNode> = {
+    People: <People24Regular style={iconStyle} />,
+    PeopleTeam: <PeopleTeam24Regular style={iconStyle} />,
+    Calendar: <Calendar24Regular style={iconStyle} />,
+    CalendarLtr: <CalendarLtr24Regular style={iconStyle} />,
+    CalendarPerson: <CalendarPerson24Regular style={iconStyle} />,
+    ChatWarning: <ChatWarning24Regular style={iconStyle} />,
+    Chat: <Chat24Regular style={iconStyle} />,
+    Settings: <Settings24Regular style={iconStyle} />,
+    Person: <Person24Regular style={iconStyle} />,
+    Megaphone: <Megaphone24Regular style={iconStyle} />,
+    Note: <Note24Regular style={iconStyle} />,
+    Clock: <Clock24Regular style={iconStyle} />,
+    DocumentSearch: <DocumentSearch24Regular style={iconStyle} />,
+    Video: <Video24Regular style={iconStyle} />,
+  };
+  return iconMap[iconName] || <Person24Regular style={iconStyle} />;
 };
 
 interface AppIconProps {
   app: AppDefinition;
   position: { x: number; y: number };
+  iconSize?: number;
+  isSelected?: boolean;
   onClick: () => void;
   onDragEnd: (x: number, y: number) => void;
   onContextMenu?: (e: React.MouseEvent) => void;
@@ -49,6 +58,8 @@ const DRAG_THRESHOLD = 5;
 export function AppIcon({
   app,
   position,
+  iconSize = 1.0,
+  isSelected = false,
   onClick,
   onDragEnd,
   onContextMenu,
@@ -56,6 +67,7 @@ export function AppIcon({
   onDragCancel,
 }: AppIconProps) {
   const [isDragging, setIsDragging] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
   const [currentPos, setCurrentPos] = useState(position);
   const elementRef = useRef<HTMLDivElement>(null);
   const startPosRef = useRef({ x: 0, y: 0 });
@@ -139,11 +151,17 @@ export function AppIcon({
             const finalX = rect.left - desktopRect.left;
             const finalY = rect.top - desktopRect.top;
 
-            // Snap to grid locally (90px grid, 10px margin)
-            const gridSize = 90;
-            const margin = 10;
-            const snappedX = Math.round(finalX / gridSize) * gridSize + margin;
-            const snappedY = Math.round(finalY / gridSize) * gridSize + margin;
+            // Snap to grid locally (scaled by iconSize)
+            const gridSize = 90 * iconSize;
+            const margin = 10 * iconSize;
+            // Calculate which grid cell to snap to
+            const snappedCol = Math.round((finalX - margin) / gridSize);
+            const snappedRow = Math.round((finalY - margin) / gridSize);
+            // Ensure non-negative
+            const clampedCol = Math.max(0, snappedCol);
+            const clampedRow = Math.max(0, snappedRow);
+            const snappedX = clampedCol * gridSize + margin;
+            const snappedY = clampedRow * gridSize + margin;
 
             // Update local position to snapped position immediately
             setCurrentPos({ x: snappedX, y: snappedY });
@@ -162,6 +180,18 @@ export function AppIcon({
     document.addEventListener("mouseup", handleMouseUp);
   };
 
+  // Base sizes (in rem)
+  const baseIconBoxSize = 3;
+  const baseFontSize = 1.75;
+  const baseLabelSize = 0.6875;
+  const baseContainerWidth = 5;
+
+  // Scaled sizes
+  const iconBoxSize = baseIconBoxSize * iconSize;
+  const fontSize = baseFontSize * iconSize;
+  const labelSize = baseLabelSize * iconSize;
+  const containerWidth = baseContainerWidth * iconSize;
+
   return (
     <div
       ref={elementRef}
@@ -172,16 +202,28 @@ export function AppIcon({
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
-        width: "5rem",
-        padding: "0.5rem",
+        width: `${containerWidth}rem`,
+        padding: `${0.5 * iconSize}rem`,
         cursor: isDragging ? "grabbing" : "pointer",
-        borderRadius: "0.5rem",
-        transition: isDragging ? "none" : "left 0.2s, top 0.2s",
+        borderRadius: `${0.5 * iconSize}rem`,
+        transition: isDragging
+          ? "none"
+          : "left 0.2s, top 0.2s, background 0.15s",
         userSelect: "none",
         zIndex: isDragging ? 1000 : 1,
         opacity: isDragging ? 0.8 : 1,
+        background: isSelected
+          ? `color-mix(in srgb, ${tokens.colorBrandBackground} 30%, transparent)`
+          : isHovered && !isDragging
+            ? "rgba(255, 255, 255, 0.1)"
+            : "transparent",
+        border: isSelected
+          ? `1px solid ${tokens.colorBrandBackground}`
+          : "1px solid transparent",
       }}
       onMouseDown={handleMouseDown}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
       onContextMenu={onContextMenu}
       tabIndex={0}
       onKeyDown={(e) => {
@@ -190,30 +232,30 @@ export function AppIcon({
     >
       <div
         style={{
-          width: "3rem",
-          height: "3rem",
+          width: `${iconBoxSize}rem`,
+          height: `${iconBoxSize}rem`,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
           background: tokens.colorNeutralBackground1,
-          borderRadius: "0.75rem",
-          marginBottom: "0.25rem",
+          borderRadius: `${0.75 * iconSize}rem`,
+          marginBottom: `${0.25 * iconSize}rem`,
           color: tokens.colorNeutralForeground1,
           boxShadow: isDragging
             ? "0 4px 12px rgba(0, 0, 0, 0.3)"
             : "0 1px 3px rgba(0, 0, 0, 0.2)",
-          fontSize: "1.75rem",
+          fontSize: `${fontSize}rem`,
         }}
       >
-        {iconMap[app.icon] || <Person24Regular />}
+        {getIcon(app.icon, iconSize)}
       </div>
       <span
         style={{
-          fontSize: "0.6875rem",
+          fontSize: `${labelSize}rem`,
           color: "white",
           textAlign: "center",
           textShadow: "0 1px 2px rgba(0, 0, 0, 0.5)",
-          maxWidth: "4.375rem",
+          maxWidth: `${4.375 * iconSize}rem`,
           overflow: "hidden",
           textOverflow: "ellipsis",
           whiteSpace: "nowrap",

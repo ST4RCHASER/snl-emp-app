@@ -537,7 +537,7 @@ export function CalendarWidget({
           ? "0 8px 24px rgba(0, 0, 0, 0.3)"
           : "0 2px 8px rgba(0, 0, 0, 0.15)",
         cursor: isDragging ? "grabbing" : "default",
-        zIndex: isDragging ? 1000 : 100,
+        zIndex: isDragging ? 100 : 0,
         display: "flex",
         flexDirection: "column",
         transition: isDragging ? "none" : "box-shadow 0.2s",

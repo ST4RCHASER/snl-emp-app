@@ -99,3 +99,14 @@ body {
     transform: rotate(360deg);
   }
 }
+
+/* Pulse animation for sync indicator */
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}

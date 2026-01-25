@@ -34,6 +34,9 @@ pnpm build
 
 # Type check all packages
 pnpm typecheck
+
+# Lint all packages
+pnpm lint
 ```
 
 ## Tech Stack
@@ -206,6 +209,11 @@ Located in `apps/api/src/middleware/rbac.ts`:
 - `isDeveloper(user)`, `isHR(user)`, `isManagement(user)`
 - `canManageEmployees(user)`, `canApproveLeaves(user)`, `canManageComplaints(user)`, `canManageSettings(user)`
 
+### Shared role utilities
+Located in `packages/shared/src/constants/index.ts`:
+- `hasRole(userRole, requiredRoles)` - Check if user has one of the required roles (DEVELOPER bypasses)
+- `canManageRole(actorRole, targetRole)` - Check if a role can manage another based on hierarchy
+
 ### User Type with Role
 The `User` type in `apps/api/src/auth/index.ts` extends the Better Auth session user with the `role` field:
 ```typescript
@@ -219,7 +227,10 @@ export type User = Session["user"] & {
 Copy `.env.example` to `.env` and configure:
 - `DATABASE_URL`: PostgreSQL connection string
 - `BETTER_AUTH_SECRET`: Min 32 character secret
+- `BETTER_AUTH_URL`: Auth server URL (default: http://localhost:3000)
 - `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`: From Google Cloud Console
+- `PORT`: API server port (default: 3000)
+- `FRONTEND_URL`: Frontend URL for CORS (default: http://localhost:5173)
 - `VITE_API_URL`: API URL for frontend (default: http://localhost:3000)
 
 ## Window System
@@ -259,10 +270,14 @@ export default function MyApp() {
 | Employee Directory | `apps/EmployeeDirectory` | List/edit employees | All (edit: HR) |
 | Leave Management | `apps/LeaveManagement` | Request/approve leaves | All (approve: Management) |
 | Complaint System | `apps/ComplaintSystem` | Submit/manage complaints | All (manage: HR) |
+| Complaint Chat | `apps/ComplaintChat` | Real-time chat for complaints | All |
 | Work Logs | `apps/WorkHours` | Track daily work hours | All |
 | Calendar | `apps/Calendar` | Google Calendar integration | All |
+| Notes | `apps/Notes` | Personal notes with folders | All |
 | Settings | `apps/Settings` | App preferences, leave policy | All (policy: HR) |
 | Announcements | `apps/Announcements` | Company announcements | All (manage: HR) |
+| Team Dashboard | `apps/TeamDashboard` | Team overview for managers | MANAGEMENT, DEVELOPER |
+| Team Calendar | `apps/TeamCalendar` | Team leave calendar | MANAGEMENT, DEVELOPER |
 | Audit Logs | `apps/AuditLogs` | View action & API logs | DEVELOPER only |
 
 ## Audit Logging System

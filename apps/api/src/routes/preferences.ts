@@ -55,6 +55,11 @@ export const preferencesRoutes = new Elysia({ prefix: "/api/preferences" })
           body.desktopShortcuts === null
             ? { set: null }
             : body.desktopShortcuts,
+        virtualDesktops:
+          body.virtualDesktops === null ? { set: null } : body.virtualDesktops,
+        windowStates:
+          body.windowStates === null ? { set: null } : body.windowStates,
+        appSizes: body.appSizes === null ? { set: null } : body.appSizes,
       };
 
       const preferences = await prisma.userPreferences.upsert({
@@ -66,6 +71,9 @@ export const preferencesRoutes = new Elysia({ prefix: "/api/preferences" })
           iconPositions: body.iconPositions ?? undefined,
           widgets: body.widgets ?? undefined,
           desktopShortcuts: body.desktopShortcuts ?? undefined,
+          virtualDesktops: body.virtualDesktops ?? undefined,
+          windowStates: body.windowStates ?? undefined,
+          appSizes: body.appSizes ?? undefined,
         },
       });
 
@@ -88,6 +96,9 @@ export const preferencesRoutes = new Elysia({ prefix: "/api/preferences" })
         ),
         backgroundColor: t.Optional(t.String()),
         guiScale: t.Optional(t.Number()),
+        desktopIconSize: t.Optional(t.Number()),
+        taskbarSize: t.Optional(t.Number()),
+        appDrawerIconSize: t.Optional(t.Number()),
         iconPositions: t.Optional(
           t.Union([
             t.Record(
@@ -112,6 +123,33 @@ export const preferencesRoutes = new Elysia({ prefix: "/api/preferences" })
             ),
             // Old format: array of strings (for backwards compatibility)
             t.Array(t.String()),
+            t.Null(),
+          ]),
+        ),
+        // Virtual desktops and window state
+        virtualDesktops: t.Optional(
+          t.Union([
+            t.Array(
+              t.Object({
+                id: t.String(),
+                name: t.String(),
+                order: t.Number(),
+              }),
+            ),
+            t.Null(),
+          ]),
+        ),
+        activeDesktopId: t.Optional(t.Union([t.String(), t.Null()])),
+        windowStates: t.Optional(t.Union([t.Array(t.Any()), t.Null()])),
+        appSizes: t.Optional(
+          t.Union([
+            t.Record(
+              t.String(),
+              t.Object({
+                width: t.Number(),
+                height: t.Number(),
+              }),
+            ),
             t.Null(),
           ]),
         ),

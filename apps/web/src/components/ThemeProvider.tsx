@@ -81,6 +81,22 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
     colorBrandForeground1: accentColor,
     colorBrandForeground2: accentColor,
     colorBrandStroke1: accentColor,
+    colorBrandStroke2: accentColor,
+    // Subtle button hover/pressed colors (used in window toolbar)
+    colorSubtleBackgroundHover: `color-mix(in srgb, ${accentColor} 15%, transparent)`,
+    colorSubtleBackgroundPressed: `color-mix(in srgb, ${accentColor} 25%, transparent)`,
+    colorNeutralForeground2BrandHover: accentColor,
+    colorNeutralForeground2BrandPressed: accentColor,
+    // Transparent button hover/pressed colors
+    colorTransparentBackgroundHover: `color-mix(in srgb, ${accentColor} 10%, transparent)`,
+    colorTransparentBackgroundPressed: `color-mix(in srgb, ${accentColor} 20%, transparent)`,
+    // Tab/compound brand colors (for selected tab indicator)
+    colorCompoundBrandStroke: accentColor,
+    colorCompoundBrandStrokeHover: accentColor,
+    colorCompoundBrandStrokePressed: accentColor,
+    colorCompoundBrandForeground1: accentColor,
+    colorCompoundBrandForeground1Hover: accentColor,
+    colorCompoundBrandForeground1Pressed: accentColor,
   };
 
   return <FluentProvider theme={customTheme}>{children}</FluentProvider>;

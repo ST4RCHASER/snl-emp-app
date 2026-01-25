@@ -16,23 +16,31 @@ import {
   Note24Regular,
   Clock24Regular,
   DocumentSearch24Regular,
+  Video24Regular,
 } from "@fluentui/react-icons";
 import type { AppDefinition } from "../apps/registry";
 
-const iconMap: Record<string, React.ReactNode> = {
-  People: <People24Regular />,
-  PeopleTeam: <PeopleTeam24Regular />,
-  Calendar: <Calendar24Regular />,
-  CalendarLtr: <CalendarLtr24Regular />,
-  CalendarPerson: <CalendarPerson24Regular />,
-  ChatWarning: <ChatWarning24Regular />,
-  Chat: <Chat24Regular />,
-  Settings: <Settings24Regular />,
-  Person: <Person24Regular />,
-  Megaphone: <Megaphone24Regular />,
-  Note: <Note24Regular />,
-  Clock: <Clock24Regular />,
-  DocumentSearch: <DocumentSearch24Regular />,
+const getIcon = (iconName: string, size: number = 1.0): React.ReactNode => {
+  // Base icon size is 28px for drawer, scale it
+  const iconSize = Math.round(28 * size);
+  const iconStyle = { width: iconSize, height: iconSize };
+  const iconMap: Record<string, React.ReactNode> = {
+    People: <People24Regular style={iconStyle} />,
+    PeopleTeam: <PeopleTeam24Regular style={iconStyle} />,
+    Calendar: <Calendar24Regular style={iconStyle} />,
+    CalendarLtr: <CalendarLtr24Regular style={iconStyle} />,
+    CalendarPerson: <CalendarPerson24Regular style={iconStyle} />,
+    ChatWarning: <ChatWarning24Regular style={iconStyle} />,
+    Chat: <Chat24Regular style={iconStyle} />,
+    Settings: <Settings24Regular style={iconStyle} />,
+    Person: <Person24Regular style={iconStyle} />,
+    Megaphone: <Megaphone24Regular style={iconStyle} />,
+    Note: <Note24Regular style={iconStyle} />,
+    Clock: <Clock24Regular style={iconStyle} />,
+    DocumentSearch: <DocumentSearch24Regular style={iconStyle} />,
+    Video: <Video24Regular style={iconStyle} />,
+  };
+  return iconMap[iconName] || <Person24Regular style={iconStyle} />;
 };
 
 interface AppDrawerProps {
@@ -40,6 +48,7 @@ interface AppDrawerProps {
   onOpenApp: (appId: string) => void;
   onAddShortcut: (appId: string) => void;
   onClose: () => void;
+  iconSize?: number;
 }
 
 export function AppDrawer({
@@ -47,6 +56,7 @@ export function AppDrawer({
   onOpenApp,
   onAddShortcut,
   onClose,
+  iconSize = 1.0,
 }: AppDrawerProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [draggedApp, setDraggedApp] = useState<string | null>(null);
@@ -188,12 +198,13 @@ export function AppDrawer({
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fill, minmax(100px, 1fr))",
-          gap: 24,
+          gridTemplateColumns: `repeat(auto-fill, minmax(${100 * iconSize}px, 1fr))`,
+          gap: 24 * iconSize,
           width: "100%",
           maxWidth: 900,
-          overflow: "auto",
-          padding: "0 20px",
+          overflowX: "hidden",
+          overflowY: "auto",
+          padding: `${10 * iconSize}px 20px`,
         }}
       >
         {filteredApps.map((app) => {
@@ -209,9 +220,9 @@ export function AppDrawer({
                 display: "flex",
                 flexDirection: "column",
                 alignItems: "center",
-                padding: 12,
+                padding: 12 * iconSize,
                 cursor: "pointer",
-                borderRadius: 12,
+                borderRadius: 12 * iconSize,
                 transition: "background 0.15s, transform 0.15s",
                 opacity: draggedApp === app.id ? 0.5 : 1,
               }}
@@ -227,28 +238,28 @@ export function AppDrawer({
               {/* Icon */}
               <div
                 style={{
-                  width: 56,
-                  height: 56,
+                  width: 56 * iconSize,
+                  height: 56 * iconSize,
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
                   background: tokens.colorNeutralBackground1,
-                  borderRadius: 14,
-                  marginBottom: 8,
-                  fontSize: 28,
+                  borderRadius: 14 * iconSize,
+                  marginBottom: 8 * iconSize,
+                  fontSize: 28 * iconSize,
                   color: tokens.colorNeutralForeground1,
                   boxShadow: "0 2px 8px rgba(0, 0, 0, 0.2)",
                 }}
               >
-                {iconMap[app.icon] || <Person24Regular />}
+                {getIcon(app.icon, iconSize)}
               </div>
               {/* Name */}
               <span
                 style={{
-                  fontSize: 12,
+                  fontSize: 12 * iconSize,
                   color: "white",
                   textAlign: "center",
-                  maxWidth: 90,
+                  maxWidth: 90 * iconSize,
                   overflow: "hidden",
                   textOverflow: "ellipsis",
                   whiteSpace: "nowrap",

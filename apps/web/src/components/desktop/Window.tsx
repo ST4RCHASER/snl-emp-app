@@ -1,4 +1,12 @@
-import { Suspense, type ReactNode, useMemo, useState, useEffect } from "react";
+import {
+  Suspense,
+  type ReactNode,
+  useMemo,
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+} from "react";
 import { Rnd } from "react-rnd";
 import { Button, Spinner, tokens } from "@fluentui/react-components";
 import {
@@ -8,7 +16,8 @@ import {
   SquareMultiple20Regular,
   ArrowClockwise20Regular,
 } from "@fluentui/react-icons";
-import type { WindowState } from "@/stores/windowStore";
+import type { WindowState, SnapZone } from "@/stores/windowStore";
+import { SnapPreview, detectSnapZone } from "./SnapPreview";
 
 interface WindowProps {
   window: WindowState;
@@ -21,6 +30,8 @@ interface WindowProps {
   onFocus: () => void;
   onDragStop: (position: { x: number; y: number }) => void;
   onResizeStop: (size: { width: number; height: number }) => void;
+  onSnap: (zone: SnapZone) => void;
+  onUnSnap: () => void;
 }
 
 export function Window({
@@ -34,9 +45,14 @@ export function Window({
   onFocus,
   onDragStop,
   onResizeStop,
+  onSnap,
+  onUnSnap,
 }: WindowProps) {
   // Track if this is a fresh mount for opening animation
   const [mounted, setMounted] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const [snapPreviewZone, setSnapPreviewZone] = useState<SnapZone>(null);
+  const dragStartPosRef = useRef<{ x: number; y: number } | null>(null);
 
   useEffect(() => {
     // Trigger animation after mount
@@ -45,6 +61,51 @@ export function Window({
     });
     return () => cancelAnimationFrame(timer);
   }, []);
+
+  // Track mouse position during drag to detect snap zones
+  useEffect(() => {
+    if (!isDragging) {
+      setSnapPreviewZone(null);
+      return;
+    }
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const zone = detectSnapZone(e.clientX, e.clientY, 48 * guiScale);
+      setSnapPreviewZone(zone);
+    };
+
+    document.addEventListener("mousemove", handleMouseMove);
+    return () => document.removeEventListener("mousemove", handleMouseMove);
+  }, [isDragging, guiScale]);
+
+  const handleDragStart = useCallback(() => {
+    setIsDragging(true);
+    // If window is snapped, prepare to unsnap
+    if (window.snapZone) {
+      dragStartPosRef.current = window.position;
+    }
+  }, [window.snapZone, window.position]);
+
+  const handleDragStop = useCallback(
+    (_e: unknown, d: { x: number; y: number }) => {
+      setIsDragging(false);
+
+      // Check if we should snap
+      if (snapPreviewZone) {
+        onSnap(snapPreviewZone);
+        setSnapPreviewZone(null);
+        return;
+      }
+
+      // If was snapped and dragged away, unsnap
+      if (window.snapZone && !snapPreviewZone) {
+        onUnSnap();
+      }
+
+      onDragStop({ x: d.x, y: d.y });
+    },
+    [snapPreviewZone, window.snapZone, onSnap, onUnSnap, onDragStop],
+  );
 
   // Calculate animation styles for the inner container (not Rnd wrapper)
   // Must be called before any early returns to satisfy React hooks rules
@@ -123,151 +184,169 @@ export function Window({
   const scaledMinHeight = 300 * guiScale;
   const taskbarHeight = 48 * guiScale;
 
+  // Determine if window should use snap position/size
+  const isSnapped = !!window.snapZone && window.snapZone !== "top";
+  const isMaximizedOrTopSnapped =
+    window.isMaximized || window.snapZone === "top";
+
   return (
-    <Rnd
-      position={window.isMaximized ? maxPosition : window.position}
-      size={
-        window.isMaximized
-          ? { width: "100vw", height: `calc(100vh - ${taskbarHeight}px)` }
-          : scaledSize
-      }
-      style={{
-        zIndex: window.zIndex,
-        ...(window.isMaximized && {
-          width: "100%",
-          height: `calc(100vh - ${taskbarHeight}px)`,
-          position: "fixed",
-          top: 0,
-          left: 0,
-        }),
-      }}
-      minWidth={scaledMinWidth}
-      minHeight={scaledMinHeight}
-      disableDragging={window.isMaximized}
-      enableResizing={!window.isMaximized}
-      onDragStop={(_e, d) => onDragStop({ x: d.x, y: d.y })}
-      onResizeStop={(_e, _dir, ref, _delta, position) => {
-        onResizeStop({
-          width: parseInt(ref.style.width) / guiScale,
-          height: parseInt(ref.style.height) / guiScale,
-        });
-        onDragStop({ x: position.x, y: position.y });
-      }}
-      onMouseDown={onFocus}
-      dragHandleClassName="window-drag-handle"
-    >
-      <div
-        onContextMenu={(e) => e.stopPropagation()}
+    <>
+      {/* Snap Preview Overlay */}
+      {isDragging && snapPreviewZone && (
+        <SnapPreview zone={snapPreviewZone} taskbarHeight={taskbarHeight} />
+      )}
+
+      <Rnd
+        position={isMaximizedOrTopSnapped ? maxPosition : window.position}
+        size={
+          isMaximizedOrTopSnapped
+            ? { width: "100vw", height: `calc(100vh - ${taskbarHeight}px)` }
+            : isSnapped
+              ? window.size
+              : scaledSize
+        }
         style={{
-          width: window.isMaximized ? "100vw" : "100%",
-          height: window.isMaximized
-            ? `calc(100vh - ${taskbarHeight}px)`
-            : "100%",
-          boxShadow: window.isFocused
-            ? "0 0.5rem 2rem rgba(0, 0, 0, 0.4)"
-            : "0 0.25rem 1rem rgba(0, 0, 0, 0.2)",
-          border: window.isFocused
-            ? `1px solid ${tokens.colorBrandStroke1}`
-            : `1px solid ${tokens.colorNeutralStroke1}`,
-          background: tokens.colorNeutralBackground1,
-          borderRadius: window.isMaximized ? "0" : "0.5rem",
-          display: "flex",
-          flexDirection: "column",
-          overflow: "hidden",
-          ...innerAnimationStyle,
+          zIndex: window.zIndex,
+          ...((isMaximizedOrTopSnapped || isSnapped) && {
+            transition: isDragging ? "none" : "all 0.15s ease-out",
+          }),
+          ...(isMaximizedOrTopSnapped && {
+            width: "100%",
+            height: `calc(100vh - ${taskbarHeight}px)`,
+            position: "fixed",
+            top: 0,
+            left: 0,
+          }),
         }}
+        minWidth={scaledMinWidth}
+        minHeight={scaledMinHeight}
+        disableDragging={isMaximizedOrTopSnapped}
+        enableResizing={!isMaximizedOrTopSnapped && !isSnapped}
+        onDragStart={handleDragStart}
+        onDragStop={handleDragStop}
+        onResizeStop={(_e, _dir, ref, _delta, position) => {
+          onResizeStop({
+            width: parseInt(ref.style.width) / guiScale,
+            height: parseInt(ref.style.height) / guiScale,
+          });
+          onDragStop({ x: position.x, y: position.y });
+        }}
+        onMouseDown={onFocus}
+        dragHandleClassName="window-drag-handle"
       >
         <div
-          className="window-drag-handle"
+          onContextMenu={(e) => e.stopPropagation()}
           style={{
-            background: tokens.colorNeutralBackground3,
-            padding: "0.5rem 0.75rem",
+            width: window.isMaximized ? "100vw" : "100%",
+            height: window.isMaximized
+              ? `calc(100vh - ${taskbarHeight}px)`
+              : "100%",
+            boxShadow: window.isFocused
+              ? "0 0.5rem 2rem rgba(0, 0, 0, 0.4)"
+              : "0 0.25rem 1rem rgba(0, 0, 0, 0.2)",
+            border: window.isFocused
+              ? `1px solid ${tokens.colorBrandStroke1}`
+              : `1px solid ${tokens.colorNeutralStroke1}`,
+            background: tokens.colorNeutralBackground1,
+            borderRadius: window.isMaximized ? "0" : "0.5rem",
             display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            cursor: "move",
-            userSelect: "none",
-            borderBottom: `1px solid ${tokens.colorNeutralStroke1}`,
+            flexDirection: "column",
+            overflow: "hidden",
+            ...innerAnimationStyle,
           }}
         >
-          <span
+          <div
+            className="window-drag-handle"
             style={{
-              fontSize: "0.8125rem",
-              fontWeight: 500,
-              color: tokens.colorNeutralForeground1,
+              background: tokens.colorNeutralBackground3,
+              padding: "0.5rem 0.75rem",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              cursor: "move",
+              userSelect: "none",
+              borderBottom: `1px solid ${tokens.colorNeutralStroke1}`,
             }}
           >
-            {window.title}
-          </span>
-          <div style={{ display: "flex", gap: "0.375rem" }}>
-            <Button
-              appearance="subtle"
-              size="small"
-              icon={<ArrowClockwise20Regular />}
-              onClick={(e) => {
-                e.stopPropagation();
-                onRefresh();
+            <span
+              style={{
+                fontSize: "0.8125rem",
+                fontWeight: 500,
+                color: tokens.colorNeutralForeground1,
               }}
-              style={{ minWidth: "1.75rem", padding: "0.25rem" }}
-              title="Reload"
-            />
-            <Button
-              appearance="subtle"
-              size="small"
-              icon={<Subtract20Regular />}
-              onClick={(e) => {
-                e.stopPropagation();
-                onMinimize();
-              }}
-              style={{ minWidth: "1.75rem", padding: "0.25rem" }}
-            />
-            <Button
-              appearance="subtle"
-              size="small"
-              icon={
-                window.isMaximized ? (
-                  <SquareMultiple20Regular />
-                ) : (
-                  <Maximize20Regular />
-                )
+            >
+              {window.title}
+            </span>
+            <div style={{ display: "flex", gap: "0.375rem" }}>
+              <Button
+                appearance="subtle"
+                size="small"
+                icon={<ArrowClockwise20Regular />}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRefresh();
+                }}
+                style={{ minWidth: "1.75rem", padding: "0.25rem" }}
+                title="Reload"
+              />
+              <Button
+                appearance="subtle"
+                size="small"
+                icon={<Subtract20Regular />}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onMinimize();
+                }}
+                style={{ minWidth: "1.75rem", padding: "0.25rem" }}
+              />
+              <Button
+                appearance="subtle"
+                size="small"
+                icon={
+                  window.isMaximized || window.snapZone ? (
+                    <SquareMultiple20Regular />
+                  ) : (
+                    <Maximize20Regular />
+                  )
+                }
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onMaximize();
+                }}
+                style={{ minWidth: "1.75rem", padding: "0.25rem" }}
+              />
+              <Button
+                appearance="subtle"
+                size="small"
+                icon={<Dismiss20Regular />}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onClose();
+                }}
+                style={{ minWidth: "1.75rem", padding: "0.25rem" }}
+              />
+            </div>
+          </div>
+          <div style={{ flex: 1, overflow: "auto", padding: "1rem" }}>
+            <Suspense
+              fallback={
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "center",
+                    alignItems: "center",
+                    height: "100%",
+                  }}
+                >
+                  <Spinner size="medium" label="Loading..." />
+                </div>
               }
-              onClick={(e) => {
-                e.stopPropagation();
-                onMaximize();
-              }}
-              style={{ minWidth: "1.75rem", padding: "0.25rem" }}
-            />
-            <Button
-              appearance="subtle"
-              size="small"
-              icon={<Dismiss20Regular />}
-              onClick={(e) => {
-                e.stopPropagation();
-                onClose();
-              }}
-              style={{ minWidth: "1.75rem", padding: "0.25rem" }}
-            />
+            >
+              {children}
+            </Suspense>
           </div>
         </div>
-        <div style={{ flex: 1, overflow: "auto", padding: "1rem" }}>
-          <Suspense
-            fallback={
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "center",
-                  alignItems: "center",
-                  height: "100%",
-                }}
-              >
-                <Spinner size="medium" label="Loading..." />
-              </div>
-            }
-          >
-            {children}
-          </Suspense>
-        </div>
-      </div>
-    </Rnd>
+      </Rnd>
+    </>
   );
 }

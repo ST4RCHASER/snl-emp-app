@@ -200,6 +200,9 @@ export default function Settings() {
     backgroundFit: "cover" as BackgroundFit,
     backgroundColor: "#1a1a1a",
     guiScale: 1.0,
+    desktopIconSize: 1.0,
+    taskbarSize: 1.0,
+    appDrawerIconSize: 1.0,
   });
 
   useEffect(() => {
@@ -238,6 +241,9 @@ export default function Settings() {
         backgroundFit?: string;
         backgroundColor?: string;
         guiScale?: number;
+        desktopIconSize?: number;
+        taskbarSize?: number;
+        appDrawerIconSize?: number;
       };
       setAppearance({
         theme: (prefs.theme as "system" | "light" | "dark") || "system",
@@ -246,6 +252,9 @@ export default function Settings() {
         backgroundFit: (prefs.backgroundFit as BackgroundFit) || "cover",
         backgroundColor: prefs.backgroundColor || "#1a1a1a",
         guiScale: prefs.guiScale || 1.0,
+        desktopIconSize: prefs.desktopIconSize || 1.0,
+        taskbarSize: prefs.taskbarSize || 1.0,
+        appDrawerIconSize: prefs.appDrawerIconSize || 1.0,
       });
     }
   }, [preferences]);
@@ -281,6 +290,21 @@ export default function Settings() {
   const handleGuiScaleChange = async (scale: number) => {
     setAppearance((a) => ({ ...a, guiScale: scale }));
     await updatePreferences.mutateAsync({ guiScale: scale });
+  };
+
+  const handleDesktopIconSizeChange = async (size: number) => {
+    setAppearance((a) => ({ ...a, desktopIconSize: size }));
+    await updatePreferences.mutateAsync({ desktopIconSize: size });
+  };
+
+  const handleTaskbarSizeChange = async (size: number) => {
+    setAppearance((a) => ({ ...a, taskbarSize: size }));
+    await updatePreferences.mutateAsync({ taskbarSize: size });
+  };
+
+  const handleAppDrawerIconSizeChange = async (size: number) => {
+    setAppearance((a) => ({ ...a, appDrawerIconSize: size }));
+    await updatePreferences.mutateAsync({ appDrawerIconSize: size });
   };
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -492,6 +516,7 @@ export default function Settings() {
 
       case "display":
         const scaleOptions = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 2.5, 3.0];
+        const iconSizeOptions = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
         return (
           <div style={{ display: "flex", flexDirection: "column", gap: 32 }}>
             <div>
@@ -524,6 +549,115 @@ export default function Settings() {
                     style={{ minWidth: 60 }}
                   >
                     {scale}x
+                  </Button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <h3
+                style={{
+                  margin: "0 0 16px",
+                  fontWeight: 600,
+                  color: tokens.colorNeutralForeground1,
+                }}
+              >
+                Desktop Icons Size
+              </h3>
+              <p
+                style={{
+                  margin: "0 0 16px",
+                  color: tokens.colorNeutralForeground2,
+                  fontSize: 13,
+                }}
+              >
+                Adjust the size of icons on the desktop.
+              </p>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {iconSizeOptions.map((size) => (
+                  <Button
+                    key={size}
+                    appearance={
+                      appearance.desktopIconSize === size
+                        ? "primary"
+                        : "secondary"
+                    }
+                    onClick={() => handleDesktopIconSizeChange(size)}
+                    style={{ minWidth: 60 }}
+                  >
+                    {size}x
+                  </Button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <h3
+                style={{
+                  margin: "0 0 16px",
+                  fontWeight: 600,
+                  color: tokens.colorNeutralForeground1,
+                }}
+              >
+                Taskbar Size
+              </h3>
+              <p
+                style={{
+                  margin: "0 0 16px",
+                  color: tokens.colorNeutralForeground2,
+                  fontSize: 13,
+                }}
+              >
+                Adjust the size of taskbar icons and height.
+              </p>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {iconSizeOptions.map((size) => (
+                  <Button
+                    key={size}
+                    appearance={
+                      appearance.taskbarSize === size ? "primary" : "secondary"
+                    }
+                    onClick={() => handleTaskbarSizeChange(size)}
+                    style={{ minWidth: 60 }}
+                  >
+                    {size}x
+                  </Button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <h3
+                style={{
+                  margin: "0 0 16px",
+                  fontWeight: 600,
+                  color: tokens.colorNeutralForeground1,
+                }}
+              >
+                App Drawer Icon Size
+              </h3>
+              <p
+                style={{
+                  margin: "0 0 16px",
+                  color: tokens.colorNeutralForeground2,
+                  fontSize: 13,
+                }}
+              >
+                Adjust the size of icons in the app drawer.
+              </p>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {iconSizeOptions.map((size) => (
+                  <Button
+                    key={size}
+                    appearance={
+                      appearance.appDrawerIconSize === size
+                        ? "primary"
+                        : "secondary"
+                    }
+                    onClick={() => handleAppDrawerIconSizeChange(size)}
+                    style={{ minWidth: 60 }}
+                  >
+                    {size}x
                   </Button>
                 ))}
               </div>

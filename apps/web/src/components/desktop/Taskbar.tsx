@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Avatar,
   Button,
@@ -15,6 +15,7 @@ import {
   SignOut24Regular,
   Calendar24Regular,
   CalendarLtr24Regular,
+  CalendarPerson24Regular,
   People24Regular,
   PeopleTeam24Regular,
   ChatWarning24Regular,
@@ -24,51 +25,87 @@ import {
   Note24Regular,
   Clock24Regular,
   DocumentSearch24Regular,
+  Video24Regular,
   Dismiss20Regular,
   Subtract20Regular,
   Maximize20Regular,
   Square20Regular,
   Apps24Regular,
+  ArrowUp16Regular,
+  ArrowDown16Regular,
+  PlugDisconnected16Regular,
 } from "@fluentui/react-icons";
 import { useWindowStore, type WindowState } from "@/stores/windowStore";
+import { useDesktopStore } from "@/stores/desktopStore";
 import { useAuth } from "@/auth/provider";
 import { signOut } from "@/auth/client";
+import { DesktopSwitcher } from "./DesktopSwitcher";
+import { useServerStatus } from "@/hooks/useServerStatus";
 
-const iconMap: Record<string, React.ReactNode> = {
-  announcements: <Megaphone24Regular />,
-  "employee-directory": <People24Regular />,
-  "leave-management": <Calendar24Regular />,
-  complaints: <ChatWarning24Regular />,
-  "complaint-chat": <Chat24Regular />,
-  settings: <Settings24Regular />,
-  profile: <Person24Regular />,
-  calendar: <CalendarLtr24Regular />,
-  notes: <Note24Regular />,
-  "work-hours": <Clock24Regular />,
-  "team-dashboard": <PeopleTeam24Regular />,
-  "audit-logs": <DocumentSearch24Regular />,
+const getIcon = (appId: string, size: number = 1.0): React.ReactNode => {
+  // Base icon size is 24px, scale it with the size multiplier
+  const iconSize = Math.round(24 * size);
+  const iconStyle = { width: iconSize, height: iconSize };
+  const iconMap: Record<string, React.ReactNode> = {
+    announcements: <Megaphone24Regular style={iconStyle} />,
+    "employee-directory": <People24Regular style={iconStyle} />,
+    "leave-management": <Calendar24Regular style={iconStyle} />,
+    complaints: <ChatWarning24Regular style={iconStyle} />,
+    "complaint-chat": <Chat24Regular style={iconStyle} />,
+    settings: <Settings24Regular style={iconStyle} />,
+    profile: <Person24Regular style={iconStyle} />,
+    calendar: <CalendarLtr24Regular style={iconStyle} />,
+    notes: <Note24Regular style={iconStyle} />,
+    "work-hours": <Clock24Regular style={iconStyle} />,
+    "work-logs": <Clock24Regular style={iconStyle} />,
+    "team-dashboard": <PeopleTeam24Regular style={iconStyle} />,
+    "team-calendar": <CalendarPerson24Regular style={iconStyle} />,
+    "audit-logs": <DocumentSearch24Regular style={iconStyle} />,
+    youtube: <Video24Regular style={iconStyle} />,
+  };
+
+  if (appId.startsWith("complaint-chat-")) {
+    return <Chat24Regular style={iconStyle} />;
+  }
+
+  return iconMap[appId] || <Person24Regular style={iconStyle} />;
 };
 
 // Custom icon component for team calendar with employee avatar overlay
 function TeamCalendarIcon({
   avatar,
   name,
+  size = 1.0,
 }: {
   avatar?: string;
   name?: string;
+  size?: number;
 }) {
+  const iconSize = Math.round(24 * size);
+  // Map to nearest valid Fluent UI avatar size
+  const getAvatarSize = (
+    s: number,
+  ): 16 | 20 | 24 | 28 | 32 | 36 | 40 | 48 | 56 | 64 | 72 | 96 | 120 | 128 => {
+    const targetSize = Math.round(20 * s);
+    const validSizes = [
+      16, 20, 24, 28, 32, 36, 40, 48, 56, 64, 72, 96, 120, 128,
+    ] as const;
+    return validSizes.reduce((prev, curr) =>
+      Math.abs(curr - targetSize) < Math.abs(prev - targetSize) ? curr : prev,
+    );
+  };
   return (
-    <div style={{ position: "relative", width: 24, height: 24 }}>
-      <CalendarLtr24Regular />
+    <div style={{ position: "relative", width: iconSize, height: iconSize }}>
+      <CalendarLtr24Regular style={{ width: iconSize, height: iconSize }} />
       <Avatar
-        size={20}
+        size={getAvatarSize(size)}
         name={name || "Employee"}
         image={{ src: avatar || undefined }}
         style={{
           position: "absolute",
-          bottom: -4,
-          right: -4,
-          border: `2px solid ${tokens.colorNeutralBackground2}`,
+          bottom: -4 * size,
+          right: -4 * size,
+          border: `${Math.max(1, Math.round(2 * size))}px solid ${tokens.colorNeutralBackground2}`,
         }}
       />
     </div>
@@ -78,16 +115,43 @@ function TeamCalendarIcon({
 interface TaskbarProps {
   onOpenDrawer?: () => void;
   isDrawerOpen?: boolean;
+  isSyncing?: boolean;
+  isLoading?: boolean;
+  taskbarSize?: number;
 }
 
-export function Taskbar({ onOpenDrawer, isDrawerOpen }: TaskbarProps) {
+export function Taskbar({
+  onOpenDrawer,
+  isDrawerOpen,
+  isSyncing,
+  isLoading,
+  taskbarSize = 1.0,
+}: TaskbarProps) {
   const windows = useWindowStore((s) => s.windows);
   const focusWindow = useWindowStore((s) => s.focusWindow);
   const restoreWindow = useWindowStore((s) => s.restoreWindow);
   const minimizeWindow = useWindowStore((s) => s.minimizeWindow);
   const maximizeWindow = useWindowStore((s) => s.maximizeWindow);
   const closeWindow = useWindowStore((s) => s.closeWindow);
+  const activeDesktopId = useDesktopStore((s) => s.activeDesktopId);
   const { user } = useAuth();
+
+  // Server connection status
+  const { isConnected, retry: retryConnection } = useServerStatus();
+
+  // Filter windows for the active desktop
+  const desktopWindows = windows.filter((w) => w.desktopId === activeDesktopId);
+
+  // Current time state
+  const [currentTime, setCurrentTime] = useState(new Date());
+
+  // Update time every minute
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 60000);
+    return () => clearInterval(interval);
+  }, []);
 
   const [contextMenu, setContextMenu] = useState<{
     windowId: string;
@@ -141,14 +205,14 @@ export function Taskbar({ onOpenDrawer, isDrawerOpen }: TaskbarProps) {
           bottom: 0,
           left: 0,
           right: 0,
-          height: "3rem",
+          height: `${3 * taskbarSize}rem`,
           background: tokens.colorNeutralBackground2,
           borderTop: `1px solid ${tokens.colorNeutralStroke1}`,
           backdropFilter: "blur(10px)",
           display: "flex",
           alignItems: "center",
-          padding: "0 1rem",
-          gap: "0.5rem",
+          padding: `0 ${1 * taskbarSize}rem`,
+          gap: `${0.5 * taskbarSize}rem`,
           zIndex: 9999,
         }}
       >
@@ -159,16 +223,16 @@ export function Taskbar({ onOpenDrawer, isDrawerOpen }: TaskbarProps) {
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              width: "2.5rem",
-              height: "2.5rem",
-              borderRadius: "0.5rem",
+              width: `${2.5 * taskbarSize}rem`,
+              height: `${2.5 * taskbarSize}rem`,
+              borderRadius: `${0.5 * taskbarSize}rem`,
               cursor: "pointer",
               transition: "background 0.2s",
               background: isDrawerOpen
                 ? tokens.colorBrandBackground
                 : "transparent",
               color: isDrawerOpen ? "white" : tokens.colorNeutralForeground1,
-              fontSize: "1.25rem",
+              fontSize: `${1.25 * taskbarSize}rem`,
             }}
             onClick={onOpenDrawer}
             onMouseEnter={(e) => {
@@ -183,7 +247,12 @@ export function Taskbar({ onOpenDrawer, isDrawerOpen }: TaskbarProps) {
               }
             }}
           >
-            <Apps24Regular />
+            <Apps24Regular
+              style={{
+                width: Math.round(24 * taskbarSize),
+                height: Math.round(24 * taskbarSize),
+              }}
+            />
           </div>
         </Tooltip>
 
@@ -191,23 +260,25 @@ export function Taskbar({ onOpenDrawer, isDrawerOpen }: TaskbarProps) {
         <div
           style={{
             width: 1,
-            height: "1.5rem",
+            height: `${1.5 * taskbarSize}rem`,
             background: tokens.colorNeutralStroke1,
-            marginRight: "0.25rem",
+            marginRight: `${0.25 * taskbarSize}rem`,
           }}
         />
 
-        <div style={{ display: "flex", gap: "0.25rem", flex: 1 }}>
-          {windows.map((win) => (
+        <div
+          style={{ display: "flex", gap: `${0.25 * taskbarSize}rem`, flex: 1 }}
+        >
+          {desktopWindows.map((win) => (
             <Tooltip key={win.id} content={win.title} relationship="label">
               <div
                 style={{
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  width: "2.5rem",
-                  height: "2.5rem",
-                  borderRadius: "0.5rem",
+                  width: `${2.5 * taskbarSize}rem`,
+                  height: `${2.5 * taskbarSize}rem`,
+                  borderRadius: `${0.5 * taskbarSize}rem`,
                   cursor: "pointer",
                   transition: "background 0.2s",
                   background: win.isFocused
@@ -215,7 +286,7 @@ export function Taskbar({ onOpenDrawer, isDrawerOpen }: TaskbarProps) {
                     : "transparent",
                   opacity: win.isMinimized ? 0.6 : 1,
                   color: tokens.colorNeutralForeground1,
-                  fontSize: "1.25rem",
+                  fontSize: `${1.25 * taskbarSize}rem`,
                 }}
                 onClick={() => handleTaskbarClick(win)}
                 onContextMenu={(e) => handleContextMenu(e, win.id)}
@@ -235,28 +306,116 @@ export function Taskbar({ onOpenDrawer, isDrawerOpen }: TaskbarProps) {
                   <TeamCalendarIcon
                     avatar={win.props?.employeeAvatar as string | undefined}
                     name={win.props?.employeeName as string | undefined}
+                    size={taskbarSize}
                   />
                 ) : (
-                  iconMap[win.appId] ||
-                  (win.appId.startsWith("complaint-chat-") ? (
-                    <Chat24Regular />
-                  ) : (
-                    <Person24Regular />
-                  ))
+                  getIcon(win.appId, taskbarSize)
                 )}
               </div>
             </Tooltip>
           ))}
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: `${0.75 * taskbarSize}rem`,
+          }}
+        >
+          {/* Desktop Switcher */}
+          <DesktopSwitcher taskbarSize={taskbarSize} />
+
+          {/* Divider */}
+          <div
+            style={{
+              width: 1,
+              height: `${1.5 * taskbarSize}rem`,
+              background: tokens.colorNeutralStroke1,
+            }}
+          />
+
+          {/* Status Indicators */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: `${0.25 * taskbarSize}rem`,
+            }}
+          >
+            {/* Connection Status */}
+            {!isConnected && (
+              <Tooltip
+                content="Disconnected - Click to retry"
+                relationship="label"
+              >
+                <div
+                  onClick={retryConnection}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    width: `${1.5 * taskbarSize}rem`,
+                    height: `${1.5 * taskbarSize}rem`,
+                    borderRadius: `${0.25 * taskbarSize}rem`,
+                    cursor: "pointer",
+                    color: tokens.colorPaletteRedForeground1,
+                    animation: "pulse 2s ease-in-out infinite",
+                  }}
+                >
+                  <PlugDisconnected16Regular />
+                </div>
+              </Tooltip>
+            )}
+
+            {/* Sync Indicator - Upload */}
+            {isSyncing && (
+              <Tooltip content="Saving..." relationship="label">
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    width: `${1.5 * taskbarSize}rem`,
+                    height: `${1.5 * taskbarSize}rem`,
+                    borderRadius: `${0.25 * taskbarSize}rem`,
+                    color: tokens.colorBrandForeground1,
+                    animation: "pulse 1s ease-in-out infinite",
+                  }}
+                >
+                  <ArrowUp16Regular />
+                </div>
+              </Tooltip>
+            )}
+
+            {/* Sync Indicator - Download */}
+            {isLoading && !isSyncing && (
+              <Tooltip content="Loading..." relationship="label">
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    width: `${1.5 * taskbarSize}rem`,
+                    height: `${1.5 * taskbarSize}rem`,
+                    borderRadius: `${0.25 * taskbarSize}rem`,
+                    color: tokens.colorBrandForeground1,
+                    animation: "pulse 1s ease-in-out infinite",
+                  }}
+                >
+                  <ArrowDown16Regular />
+                </div>
+              </Tooltip>
+            )}
+          </div>
+
           <span
             style={{
               color: tokens.colorNeutralForeground1,
-              fontSize: "0.75rem",
+              fontSize: `${0.75 * taskbarSize}rem`,
             }}
           >
-            {new Date().toLocaleTimeString([], {
+            {currentTime.toLocaleTimeString([], {
               hour: "2-digit",
               minute: "2-digit",
             })}
