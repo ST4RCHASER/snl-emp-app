@@ -23,7 +23,10 @@ import {
   ArrowLeft24Regular,
 } from "@fluentui/react-icons";
 import { employeeQueries, useUpdateMyProfile } from "@/api/queries/employees";
-import { leaveQueries } from "@/api/queries/leaves";
+import {
+  leaveBalanceQueries,
+  type LeaveBalance,
+} from "@/api/queries/leave-balances";
 import { logAction } from "@/api/queries/audit";
 import { useAuth } from "@/auth/provider";
 import { useWindowRefresh } from "@/components/desktop/WindowContext";
@@ -48,14 +51,14 @@ export default function Profile() {
   const isMobile = useMobile();
 
   // Refresh data when window refresh button is clicked
-  const queryKeys = useMemo(() => [["employees"], ["leaves"]], []);
+  const queryKeys = useMemo(() => [["employees"], ["leave-balances"]], []);
   useWindowRefresh(queryKeys);
 
   const { data: myEmployee, isLoading: loadingEmployee } = useQuery(
     employeeQueries.me,
   );
-  const { data: balance, isLoading: loadingBalance } = useQuery(
-    leaveQueries.balance,
+  const { data: leaveBalances, isLoading: loadingBalance } = useQuery(
+    leaveBalanceQueries.my(),
   );
 
   const updateProfile = useUpdateMyProfile();
@@ -475,7 +478,7 @@ export default function Profile() {
       )}
 
       {/* Leave Balance */}
-      {balance && (
+      {leaveBalances && leaveBalances.length > 0 && (
         <Card>
           <CardHeader
             header={
@@ -492,30 +495,19 @@ export default function Profile() {
                 gap: isMobile ? 12 : 16,
               }}
             >
-              <BalanceCard
-                label="Personal Leave"
-                used={balance.personal?.used ?? 0}
-                max={balance.personal?.max ?? 0}
-                remaining={balance.personal?.remaining ?? 0}
-              />
-              <BalanceCard
-                label="Annual Leave"
-                used={balance.annual?.used ?? 0}
-                max={balance.annual?.max ?? 0}
-                remaining={balance.annual?.remaining ?? 0}
-              />
-              <BalanceCard
-                label="Sick Leave"
-                used={balance.sick?.used ?? 0}
-                max={balance.sick?.max ?? 0}
-                remaining={balance.sick?.remaining ?? 0}
-              />
-              <BalanceCard
-                label="Birthday Leave"
-                used={balance.birthday?.used ?? 0}
-                max={balance.birthday?.max ?? 1}
-                remaining={balance.birthday?.remaining ?? 1}
-              />
+              {leaveBalances
+                .filter((b: LeaveBalance) => b.leaveType.isActive)
+                .map((balance: LeaveBalance) => (
+                  <BalanceCard
+                    key={balance.leaveType.id}
+                    label={balance.leaveType.name}
+                    used={balance.used}
+                    max={balance.totalBalance}
+                    remaining={balance.remaining}
+                    isUnlimited={balance.leaveType.isUnlimited}
+                    color={balance.leaveType.color}
+                  />
+                ))}
             </div>
           </div>
         </Card>
@@ -551,17 +543,21 @@ function BalanceCard({
   used,
   max,
   remaining,
+  isUnlimited,
+  color,
 }: {
   label: string;
   used: number;
   max: number;
-  remaining: number;
+  remaining: number | null;
+  isUnlimited?: boolean;
+  color?: string | null;
 }) {
-  const percentage = (used / max) * 100;
+  const percentage = isUnlimited ? 0 : max > 0 ? (used / max) * 100 : 0;
   const barColor =
     percentage > 80
       ? tokens.colorPaletteRedBackground3
-      : tokens.colorBrandBackground;
+      : color || tokens.colorBrandBackground;
 
   return (
     <div
@@ -569,41 +565,52 @@ function BalanceCard({
         padding: 16,
         background: tokens.colorNeutralBackground3,
         borderRadius: 8,
+        borderLeft: color ? `3px solid ${color}` : undefined,
       }}
     >
       <div style={{ fontWeight: 500, marginBottom: 8 }}>{label}</div>
       <div style={{ fontSize: 24, fontWeight: 600, marginBottom: 4 }}>
-        {remaining}{" "}
-        <span
-          style={{
-            fontSize: 14,
-            fontWeight: 400,
-            color: tokens.colorNeutralForeground3,
-          }}
-        >
-          remaining
-        </span>
+        {isUnlimited ? (
+          <span style={{ fontSize: 16 }}>Unlimited</span>
+        ) : (
+          <>
+            {remaining ?? 0}{" "}
+            <span
+              style={{
+                fontSize: 14,
+                fontWeight: 400,
+                color: tokens.colorNeutralForeground3,
+              }}
+            >
+              remaining
+            </span>
+          </>
+        )}
       </div>
-      <div
-        style={{
-          height: 4,
-          background: tokens.colorNeutralBackground5,
-          borderRadius: 2,
-          marginBottom: 4,
-        }}
-      >
-        <div
-          style={{
-            height: "100%",
-            width: `${percentage}%`,
-            background: barColor,
-            borderRadius: 2,
-          }}
-        />
-      </div>
-      <div style={{ fontSize: 12, color: tokens.colorNeutralForeground3 }}>
-        {used} used of {max}
-      </div>
+      {!isUnlimited && (
+        <>
+          <div
+            style={{
+              height: 4,
+              background: tokens.colorNeutralBackground5,
+              borderRadius: 2,
+              marginBottom: 4,
+            }}
+          >
+            <div
+              style={{
+                height: "100%",
+                width: `${Math.min(percentage, 100)}%`,
+                background: barColor,
+                borderRadius: 2,
+              }}
+            />
+          </div>
+          <div style={{ fontSize: 12, color: tokens.colorNeutralForeground3 }}>
+            {used} used of {max}
+          </div>
+        </>
+      )}
     </div>
   );
 }

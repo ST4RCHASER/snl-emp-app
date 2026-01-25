@@ -22,7 +22,6 @@ import {
   Delete24Regular,
   Color24Regular,
   Desktop24Regular,
-  CalendarSettings24Regular,
   ScaleFit24Regular,
   Clock24Regular,
   ChatWarning24Regular,
@@ -52,7 +51,6 @@ type MenuSection =
   | "wallpaper"
   | "display"
   | "work-policy"
-  | "leave-policy"
   | "complaints";
 
 interface MenuItem {
@@ -70,12 +68,6 @@ const MENU_ITEMS: MenuItem[] = [
     id: "work-policy",
     label: "Work Hours",
     icon: <Clock24Regular />,
-    hrOnly: true,
-  },
-  {
-    id: "leave-policy",
-    label: "Leave Policy",
-    icon: <CalendarSettings24Regular />,
     hrOnly: true,
   },
   {
@@ -182,13 +174,6 @@ export default function Settings() {
   const uploadBackground = useUploadBackground();
 
   const [form, setForm] = useState({
-    maxConsecutiveLeaveDays: 14,
-    maxAnnualLeaveDays: 10,
-    maxSickLeaveDays: 30,
-    maxPersonalLeaveDays: 7,
-    maxBirthdayLeaveDays: 1,
-    annualLeaveCarryoverMax: 3,
-    fiscalYearStartMonth: 1,
     workHoursPerDay: 8,
     complaintChatEnabled: true,
   });
@@ -208,24 +193,10 @@ export default function Settings() {
   useEffect(() => {
     if (settings) {
       const s = settings as {
-        maxConsecutiveLeaveDays: number;
-        maxAnnualLeaveDays: number;
-        maxSickLeaveDays: number;
-        maxPersonalLeaveDays: number;
-        maxBirthdayLeaveDays: number;
-        annualLeaveCarryoverMax: number;
-        fiscalYearStartMonth: number;
         workHoursPerDay?: number;
         complaintChatEnabled?: boolean;
       };
       setForm({
-        maxConsecutiveLeaveDays: s.maxConsecutiveLeaveDays,
-        maxAnnualLeaveDays: s.maxAnnualLeaveDays,
-        maxSickLeaveDays: s.maxSickLeaveDays,
-        maxPersonalLeaveDays: s.maxPersonalLeaveDays,
-        maxBirthdayLeaveDays: s.maxBirthdayLeaveDays,
-        annualLeaveCarryoverMax: s.annualLeaveCarryoverMax,
-        fiscalYearStartMonth: s.fiscalYearStartMonth,
         workHoursPerDay: s.workHoursPerDay ?? 8,
         complaintChatEnabled: s.complaintChatEnabled ?? true,
       });
@@ -708,207 +679,6 @@ export default function Settings() {
                         workHoursPerDay: parseFloat(d.value) || 8,
                       }))
                     }
-                  />
-                </Field>
-              </div>
-            </div>
-
-            <div>
-              <Button
-                appearance="primary"
-                icon={<Save24Regular />}
-                onClick={handleSaveSettings}
-                disabled={updateSettings.isPending}
-              >
-                {updateSettings.isPending ? "Saving..." : "Save Changes"}
-              </Button>
-            </div>
-
-            {updateSettings.isSuccess && (
-              <MessageBar intent="success">
-                <MessageBarBody>
-                  <MessageBarTitle>Success</MessageBarTitle>
-                  Settings saved successfully.
-                </MessageBarBody>
-              </MessageBar>
-            )}
-          </div>
-        );
-
-      case "leave-policy":
-        if (loadingSettings) {
-          return (
-            <div
-              style={{ display: "flex", justifyContent: "center", padding: 40 }}
-            >
-              <Spinner size="medium" label="Loading..." />
-            </div>
-          );
-        }
-        return (
-          <div style={{ display: "flex", flexDirection: "column", gap: 32 }}>
-            <p style={{ margin: 0, color: tokens.colorNeutralForeground2 }}>
-              Configure leave quotas, policies, and fiscal year settings.
-            </p>
-
-            {/* Leave Quota Section */}
-            <div>
-              <h3
-                style={{
-                  margin: "0 0 16px",
-                  fontWeight: 600,
-                  color: tokens.colorNeutralForeground1,
-                }}
-              >
-                Leave Quota
-              </h3>
-              <div style={{ display: "grid", gap: 16, maxWidth: 400 }}>
-                <Field
-                  label="Personal Leave Days"
-                  hint="Total personal leave days per year"
-                >
-                  <Input
-                    type="number"
-                    min={0}
-                    value={String(form.maxPersonalLeaveDays)}
-                    onChange={(_, d) =>
-                      setForm((f) => ({
-                        ...f,
-                        maxPersonalLeaveDays: parseInt(d.value) || 0,
-                      }))
-                    }
-                  />
-                </Field>
-
-                <Field
-                  label="Annual Leave Days"
-                  hint="Total annual leave days per year"
-                >
-                  <Input
-                    type="number"
-                    min={0}
-                    value={String(form.maxAnnualLeaveDays)}
-                    onChange={(_, d) =>
-                      setForm((f) => ({
-                        ...f,
-                        maxAnnualLeaveDays: parseInt(d.value) || 0,
-                      }))
-                    }
-                  />
-                </Field>
-
-                <Field
-                  label="Annual Leave Carry-over"
-                  hint="Maximum days that can carry over to next year"
-                >
-                  <Input
-                    type="number"
-                    min={0}
-                    value={String(form.annualLeaveCarryoverMax)}
-                    onChange={(_, d) =>
-                      setForm((f) => ({
-                        ...f,
-                        annualLeaveCarryoverMax: parseInt(d.value) || 0,
-                      }))
-                    }
-                  />
-                </Field>
-
-                <Field
-                  label="Sick Leave Days"
-                  hint="Total sick leave days per year"
-                >
-                  <Input
-                    type="number"
-                    min={0}
-                    value={String(form.maxSickLeaveDays)}
-                    onChange={(_, d) =>
-                      setForm((f) => ({
-                        ...f,
-                        maxSickLeaveDays: parseInt(d.value) || 0,
-                      }))
-                    }
-                  />
-                </Field>
-
-                <Field
-                  label="Birthday Leave Days"
-                  hint="Leave days for birthday"
-                >
-                  <Input
-                    type="number"
-                    min={0}
-                    value={String(form.maxBirthdayLeaveDays)}
-                    onChange={(_, d) =>
-                      setForm((f) => ({
-                        ...f,
-                        maxBirthdayLeaveDays: parseInt(d.value) || 0,
-                      }))
-                    }
-                  />
-                </Field>
-              </div>
-            </div>
-
-            {/* Policy Section */}
-            <div>
-              <h3
-                style={{
-                  margin: "0 0 16px",
-                  fontWeight: 600,
-                  color: tokens.colorNeutralForeground1,
-                }}
-              >
-                Leave Restrictions
-              </h3>
-              <div style={{ display: "grid", gap: 16, maxWidth: 400 }}>
-                <Field
-                  label="Max Consecutive Leave Days"
-                  hint="Maximum days for a single leave request"
-                >
-                  <Input
-                    type="number"
-                    min={1}
-                    value={String(form.maxConsecutiveLeaveDays)}
-                    onChange={(_, d) =>
-                      setForm((f) => ({
-                        ...f,
-                        maxConsecutiveLeaveDays: parseInt(d.value) || 1,
-                      }))
-                    }
-                  />
-                </Field>
-              </div>
-            </div>
-
-            {/* Fiscal Year Section */}
-            <div>
-              <h3
-                style={{
-                  margin: "0 0 16px",
-                  fontWeight: 600,
-                  color: tokens.colorNeutralForeground1,
-                }}
-              >
-                Fiscal Year
-              </h3>
-              <div style={{ display: "grid", gap: 16, maxWidth: 400 }}>
-                <Field
-                  label="Fiscal Year Start Month"
-                  hint="Month when the fiscal year starts (1 = January)"
-                >
-                  <Input
-                    type="number"
-                    min={1}
-                    max={12}
-                    value={String(form.fiscalYearStartMonth)}
-                    onChange={(_, d) => {
-                      const val = parseInt(d.value) || 1;
-                      setForm((f) => ({
-                        ...f,
-                        fiscalYearStartMonth: Math.min(12, Math.max(1, val)),
-                      }));
-                    }}
                   />
                 </Field>
               </div>

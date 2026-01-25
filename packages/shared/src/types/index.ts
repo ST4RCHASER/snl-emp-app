@@ -2,7 +2,6 @@ import { z } from "zod";
 import {
   ROLES,
   LEAVE_STATUS,
-  LEAVE_TYPE,
   COMPLAINT_STATUS,
   HALF_DAY_TYPE,
 } from "../constants/index.js";
@@ -73,18 +72,14 @@ export type EmployeeUpdate = z.infer<typeof employeeUpdateSchema>;
 export const leaveRequestSchema = z.object({
   id: z.string(),
   employeeId: z.string(),
-  type: z.enum([
-    LEAVE_TYPE.ANNUAL,
-    LEAVE_TYPE.SICK,
-    LEAVE_TYPE.PERSONAL,
-    LEAVE_TYPE.UNPAID,
-    LEAVE_TYPE.OTHER,
-  ]),
+  leaveTypeConfigId: z.string(),
   reason: z.string(),
   startDate: z.date(),
   endDate: z.date(),
   isHalfDay: z.boolean(),
-  halfDayType: z.enum([HALF_DAY_TYPE.MORNING, HALF_DAY_TYPE.AFTERNOON]).nullable(),
+  halfDayType: z
+    .enum([HALF_DAY_TYPE.MORNING, HALF_DAY_TYPE.AFTERNOON])
+    .nullable(),
   status: z.enum([
     LEAVE_STATUS.PENDING,
     LEAVE_STATUS.APPROVED,
@@ -99,13 +94,7 @@ export type LeaveRequest = z.infer<typeof leaveRequestSchema>;
 
 export const leaveRequestCreateSchema = z
   .object({
-    type: z.enum([
-      LEAVE_TYPE.ANNUAL,
-      LEAVE_TYPE.SICK,
-      LEAVE_TYPE.PERSONAL,
-      LEAVE_TYPE.UNPAID,
-      LEAVE_TYPE.OTHER,
-    ]),
+    type: z.string().min(1), // Dynamic leave type code
     reason: z.string().min(1).max(500),
     startDate: z.string().datetime(),
     endDate: z.string().datetime(),
@@ -121,13 +110,13 @@ export const leaveRequestCreateSchema = z
       }
       return true;
     },
-    { message: "Half day type is required when isHalfDay is true" }
+    { message: "Half day type is required when isHalfDay is true" },
   )
   .refine(
     (data) => {
       return new Date(data.startDate) <= new Date(data.endDate);
     },
-    { message: "Start date must be before or equal to end date" }
+    { message: "Start date must be before or equal to end date" },
   );
 
 export type LeaveRequestCreate = z.infer<typeof leaveRequestCreateSchema>;

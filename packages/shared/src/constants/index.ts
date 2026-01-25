@@ -16,17 +16,6 @@ export const LEAVE_STATUS = {
 
 export type LeaveStatus = (typeof LEAVE_STATUS)[keyof typeof LEAVE_STATUS];
 
-export const LEAVE_TYPE = {
-  ANNUAL: "ANNUAL",
-  SICK: "SICK",
-  PERSONAL: "PERSONAL",
-  BIRTHDAY: "BIRTHDAY",
-  UNPAID: "UNPAID",
-  OTHER: "OTHER",
-} as const;
-
-export type LeaveType = (typeof LEAVE_TYPE)[keyof typeof LEAVE_TYPE];
-
 export const COMPLAINT_STATUS = {
   UNREAD: "UNREAD",
   READ: "READ",

@@ -1,5 +1,5 @@
 import { Elysia, t } from "elysia";
-import { prisma, LeaveStatus } from "@snl-emp/db";
+import { prisma, type LeaveStatus } from "@snl-emp/db";
 import { authPlugin } from "../auth/plugin.js";
 import { canApproveLeaves } from "../middleware/rbac.js";
 
@@ -69,6 +69,7 @@ export const leaveRoutes = new Elysia({ prefix: "/api/leaves" })
               },
             },
           },
+          leaveTypeConfig: true,
           approvals: {
             include: {
               approver: {
@@ -97,7 +98,7 @@ export const leaveRoutes = new Elysia({ prefix: "/api/leaves" })
     },
   )
 
-  // Get leave balance
+  // Get leave balance (deprecated - use /api/leave-balances/my instead)
   .get(
     "/balance",
     async ({ user, set }) => {
@@ -107,67 +108,62 @@ export const leaveRoutes = new Elysia({ prefix: "/api/leaves" })
       }
 
       const employee = await getOrCreateEmployee(user.id);
-
-      const settings = await prisma.globalSettings.findUnique({
-        where: { id: "global" },
-      });
-
       const currentYear = new Date().getFullYear();
-      const startOfYear = new Date(
-        currentYear,
-        (settings?.fiscalYearStartMonth ?? 1) - 1,
-        1,
-      );
 
-      const usedLeaves = await prisma.leaveRequest.groupBy({
-        by: ["type"],
+      // Get all employee's leave balances for current year
+      const balances = await prisma.employeeLeaveBalance.findMany({
         where: {
           employeeId: employee.id,
-          status: "APPROVED",
-          startDate: { gte: startOfYear },
+          year: currentYear,
         },
-        _count: true,
+        include: {
+          leaveType: true,
+        },
       });
 
-      const usedByType: Record<string, number> = {};
-      usedLeaves.forEach((l) => {
-        usedByType[l.type] = l._count;
+      // Get all active leave types
+      const leaveTypes = await prisma.leaveTypeConfig.findMany({
+        where: { isActive: true },
+        orderBy: { order: "asc" },
       });
 
-      return {
-        annual: {
-          used: usedByType["ANNUAL"] || 0,
-          max: settings?.maxAnnualLeaveDays ?? 10,
-          remaining:
-            (settings?.maxAnnualLeaveDays ?? 10) - (usedByType["ANNUAL"] || 0),
-          carryoverMax: settings?.annualLeaveCarryoverMax ?? 3,
-        },
-        sick: {
-          used: usedByType["SICK"] || 0,
-          max: settings?.maxSickLeaveDays ?? 30,
-          remaining:
-            (settings?.maxSickLeaveDays ?? 30) - (usedByType["SICK"] || 0),
-        },
-        personal: {
-          used: usedByType["PERSONAL"] || 0,
-          max: settings?.maxPersonalLeaveDays ?? 7,
-          remaining:
-            (settings?.maxPersonalLeaveDays ?? 7) -
-            (usedByType["PERSONAL"] || 0),
-        },
-        birthday: {
-          used: usedByType["BIRTHDAY"] || 0,
-          max: settings?.maxBirthdayLeaveDays ?? 1,
-          remaining:
-            (settings?.maxBirthdayLeaveDays ?? 1) -
-            (usedByType["BIRTHDAY"] || 0),
-        },
-      };
+      // Build response with balances for each leave type
+      const result: Record<
+        string,
+        {
+          used: number;
+          max: number;
+          remaining: number;
+          isUnlimited: boolean;
+          name: string;
+          color: string | null;
+        }
+      > = {};
+
+      for (const leaveType of leaveTypes) {
+        const balance = balances.find((b) => b.leaveTypeId === leaveType.id);
+        const totalBalance =
+          (balance?.balance ?? leaveType.defaultBalance) +
+          (balance?.carriedOver ?? 0) +
+          (balance?.adjustment ?? 0);
+        const used = balance?.used ?? 0;
+
+        result[leaveType.code.toLowerCase()] = {
+          used,
+          max: leaveType.isUnlimited ? -1 : totalBalance,
+          remaining: leaveType.isUnlimited ? -1 : totalBalance - used,
+          isUnlimited: leaveType.isUnlimited,
+          name: leaveType.name,
+          color: leaveType.color,
+        };
+      }
+
+      return result;
     },
     {
       detail: {
         tags: ["Leaves"],
-        summary: "Get leave balance",
+        summary: "Get leave balance (deprecated)",
       },
     },
   )
@@ -206,22 +202,35 @@ export const leaveRoutes = new Elysia({ prefix: "/api/leaves" })
         };
       }
 
+      // Look up the leave type config by code
+      const leaveTypeConfig = await prisma.leaveTypeConfig.findUnique({
+        where: { code: body.type },
+      });
+
+      if (!leaveTypeConfig) {
+        set.status = 400;
+        return { message: `Invalid leave type: ${body.type}` };
+      }
+
       const leaveRequest = await prisma.leaveRequest.create({
         data: {
           employeeId: employee.id,
-          type: body.type,
+          leaveTypeConfigId: leaveTypeConfig.id,
           reason: body.reason,
           startDate,
           endDate,
           isHalfDay: body.isHalfDay ?? false,
           halfDayType: body.halfDayType,
           approvals: {
-            create: employee.managementLeads.map((ml) => ({
-              approverId: ml.managerId,
-            })),
+            create: employee.managementLeads.map(
+              (ml: { managerId: string }) => ({
+                approverId: ml.managerId,
+              }),
+            ),
           },
         },
         include: {
+          leaveTypeConfig: true,
           approvals: {
             include: {
               approver: {
@@ -238,14 +247,7 @@ export const leaveRoutes = new Elysia({ prefix: "/api/leaves" })
     },
     {
       body: t.Object({
-        type: t.Union([
-          t.Literal("ANNUAL"),
-          t.Literal("SICK"),
-          t.Literal("PERSONAL"),
-          t.Literal("BIRTHDAY"),
-          t.Literal("UNPAID"),
-          t.Literal("OTHER"),
-        ]),
+        type: t.String({ minLength: 1 }), // Now accepts any leave type code
         reason: t.String({ minLength: 1, maxLength: 500 }),
         startDate: t.String(),
         endDate: t.String(),
@@ -278,6 +280,7 @@ export const leaveRoutes = new Elysia({ prefix: "/api/leaves" })
               user: { select: { name: true, email: true, image: true } },
             },
           },
+          leaveTypeConfig: true,
           approvals: {
             include: {
               approver: {

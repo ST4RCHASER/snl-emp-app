@@ -203,6 +203,7 @@ export function ClockWidget({
           fontFamily: "system-ui, -apple-system, sans-serif",
           letterSpacing: -1,
           marginTop: 4,
+          marginBottom: 4,
         }}
       >
         {formatTime()}

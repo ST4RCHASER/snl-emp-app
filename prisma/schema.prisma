@@ -24,15 +24,6 @@ enum LeaveStatus {
   CANCELLED
 }
 
-enum LeaveType {
-  ANNUAL
-  SICK
-  PERSONAL
-  BIRTHDAY
-  UNPAID
-  OTHER
-}
-
 enum ComplaintStatus {
   BACKLOG
   IN_PROGRESS
@@ -178,13 +169,14 @@ model Employee {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user             User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
-  managementLeads  EmployeeManagement[] @relation("EmployeeToManagement")
-  managedEmployees EmployeeManagement[] @relation("ManagementToEmployee")
-  leaveRequests    LeaveRequest[]
-  leaveApprovals   LeaveApproval[]
-  complaints       Complaint[]
-  workLogs         WorkLog[]
+  user                  User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  managementLeads       EmployeeManagement[]   @relation("EmployeeToManagement")
+  managedEmployees      EmployeeManagement[]   @relation("ManagementToEmployee")
+  leaveRequests         LeaveRequest[]
+  leaveApprovals        LeaveApproval[]
+  complaints            Complaint[]
+  workLogs              WorkLog[]
+  employeeLeaveBalances EmployeeLeaveBalance[]
 
   @@map("employees")
 }
@@ -210,11 +202,10 @@ model LeaveRequest {
   id         String @id @default(cuid())
   employeeId String
 
-  type        LeaveType @default(ANNUAL)
   reason      String
   startDate   DateTime
   endDate     DateTime
-  isHalfDay   Boolean   @default(false)
+  isHalfDay   Boolean  @default(false)
   halfDayType String? // "morning" or "afternoon" if isHalfDay
 
   status LeaveStatus @default(PENDING)
@@ -222,8 +213,10 @@ model LeaveRequest {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  employee  Employee        @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  approvals LeaveApproval[]
+  employee          Employee        @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  approvals         LeaveApproval[]
+  leaveTypeConfig   LeaveTypeConfig @relation("LeaveTypeConfigToRequest", fields: [leaveTypeConfigId], references: [id])
+  leaveTypeConfigId String
 
   @@map("leave_requests")
 }
@@ -274,6 +267,65 @@ model GlobalSettings {
   updatedAt DateTime @updatedAt
 
   @@map("global_settings")
+}
+
+// ==================== LEAVE TYPE CONFIGURATION ====================
+
+model LeaveTypeConfig {
+  id String @id @default(cuid())
+
+  name        String // Display name (e.g., "Annual Leave", "Sick Leave")
+  code        String  @unique // Unique code (e.g., "ANNUAL", "SICK", "CUSTOM_1")
+  description String? // Optional description
+
+  defaultBalance   Int     @default(0) // Default balance for all employees
+  isUnlimited      Boolean @default(false) // If true, no balance tracking
+  isPaid           Boolean @default(true) // Whether it's paid leave
+  allowHalfDay     Boolean @default(true) // Whether half-day requests are allowed
+  allowCarryover   Boolean @default(false) // Whether unused days can carry over
+  carryoverMax     Int     @default(0) // Max days that can carry over
+  requiresApproval Boolean @default(true) // Whether manager approval is required
+
+  color    String? // Color for UI display (hex)
+  icon     String? // Icon name for UI
+  order    Int     @default(0) // Display order (lower = first)
+  isActive Boolean @default(true) // Soft delete / hide
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  employeeBalances EmployeeLeaveBalance[]
+  leaveRequests    LeaveRequest[]         @relation("LeaveTypeConfigToRequest")
+
+  @@map("leave_type_configs")
+}
+
+model EmployeeLeaveBalance {
+  id          String @id @default(cuid())
+  employeeId  String
+  leaveTypeId String
+
+  // Custom balance for this employee (overrides default)
+  balance     Int @default(0) // Total allocated days for this year
+  used        Int @default(0) // Days already used (approved leaves)
+  carriedOver Int @default(0) // Days carried from previous year
+  adjustment  Int @default(0) // Manual adjustment (+/-) by HR
+
+  year  Int // Fiscal year this balance applies to
+  notes String? // HR notes for adjustments
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employee  Employee        @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  leaveType LeaveTypeConfig @relation(fields: [leaveTypeId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, leaveTypeId, year])
+  @@index([employeeId])
+  @@index([leaveTypeId])
+  @@index([year])
+  @@map("employee_leave_balances")
 }
 
 // ==================== WORK LOG SYSTEM ====================

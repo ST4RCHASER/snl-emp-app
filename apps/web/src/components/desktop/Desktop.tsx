@@ -123,6 +123,7 @@ export function Desktop() {
   } | null>(null);
   const [selectedIcons, setSelectedIcons] = useState<Set<string>>(new Set());
   const desktopRef = useRef<HTMLDivElement>(null);
+  const justFinishedMarqueeRef = useRef(false);
 
   const { data: preferences, isFetching: isPreferencesFetching } = useQuery(
     preferencesQueries.user,
@@ -672,11 +673,23 @@ export function Desktop() {
   );
 
   const handleDesktopMouseUp = useCallback(() => {
+    if (marquee) {
+      // Mark that we just finished a marquee drag to prevent click from clearing selection
+      justFinishedMarqueeRef.current = true;
+      // Reset the flag after a short delay (after the click event fires)
+      setTimeout(() => {
+        justFinishedMarqueeRef.current = false;
+      }, 0);
+    }
     setMarquee(null);
-  }, []);
+  }, [marquee]);
 
   // Clear selection when clicking on empty desktop area
   const handleDesktopClick = useCallback((e: React.MouseEvent) => {
+    // Don't clear selection if we just finished a marquee drag
+    if (justFinishedMarqueeRef.current) {
+      return;
+    }
     if (e.target === e.currentTarget) {
       setSelectedIcons(new Set());
     }
@@ -1207,7 +1220,21 @@ export function Desktop() {
           >
             <button
               onClick={() => {
-                handleOpenApp(iconContextMenu.appId, true);
+                // If the right-clicked icon is part of selection, open all selected icons
+                if (
+                  selectedIcons.has(iconContextMenu.shortcutId) &&
+                  selectedIcons.size > 1
+                ) {
+                  const selectedShortcuts = desktopShortcuts.filter((s) =>
+                    selectedIcons.has(s.id),
+                  );
+                  selectedShortcuts.forEach((s) =>
+                    handleOpenApp(s.appId, true),
+                  );
+                  setSelectedIcons(new Set());
+                } else {
+                  handleOpenApp(iconContextMenu.appId, true);
+                }
                 handleCloseIconContextMenu();
               }}
               style={{
@@ -1231,6 +1258,10 @@ export function Desktop() {
               }}
             >
               Open
+              {selectedIcons.has(iconContextMenu.shortcutId) &&
+              selectedIcons.size > 1
+                ? ` (${selectedIcons.size})`
+                : ""}
             </button>
             <div
               style={{
@@ -1241,7 +1272,24 @@ export function Desktop() {
             />
             <button
               onClick={() => {
-                handleRemoveShortcut(iconContextMenu.shortcutId);
+                // If the right-clicked icon is part of selection, remove all selected icons
+                if (
+                  selectedIcons.has(iconContextMenu.shortcutId) &&
+                  selectedIcons.size > 1
+                ) {
+                  const newShortcuts = desktopShortcuts.filter(
+                    (s) => !selectedIcons.has(s.id),
+                  );
+                  const newPositions = { ...iconPositions };
+                  selectedIcons.forEach((id) => delete newPositions[id]);
+                  updatePreferences.mutate({
+                    desktopShortcuts: newShortcuts,
+                    iconPositions: newPositions,
+                  });
+                  setSelectedIcons(new Set());
+                } else {
+                  handleRemoveShortcut(iconContextMenu.shortcutId);
+                }
                 handleCloseIconContextMenu();
               }}
               style={{
@@ -1265,6 +1313,10 @@ export function Desktop() {
               }}
             >
               Remove from Desktop
+              {selectedIcons.has(iconContextMenu.shortcutId) &&
+              selectedIcons.size > 1
+                ? ` (${selectedIcons.size})`
+                : ""}
             </button>
           </div>
         </>

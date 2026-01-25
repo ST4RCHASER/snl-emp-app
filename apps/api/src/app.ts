@@ -6,6 +6,8 @@ import { logApiRequest } from "./middleware/apiLogger.js";
 import {
   employeeRoutes,
   leaveRoutes,
+  leaveTypeRoutes,
+  leaveBalanceRoutes,
   complaintRoutes,
   settingsRoutes,
   calendarRoutes,
@@ -66,6 +68,8 @@ export const app = new Elysia()
   })
   .use(employeeRoutes)
   .use(leaveRoutes)
+  .use(leaveTypeRoutes)
+  .use(leaveBalanceRoutes)
   .use(complaintRoutes)
   .use(settingsRoutes)
   .use(calendarRoutes)

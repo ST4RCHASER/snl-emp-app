@@ -1,5 +1,7 @@
 export { employeeRoutes } from "./employees.js";
 export { leaveRoutes } from "./leaves.js";
+export { leaveTypeRoutes } from "./leave-types.js";
+export { leaveBalanceRoutes } from "./leave-balances.js";
 export { complaintRoutes } from "./complaints.js";
 export { settingsRoutes } from "./settings.js";
 export { calendarRoutes } from "./calendar.js";

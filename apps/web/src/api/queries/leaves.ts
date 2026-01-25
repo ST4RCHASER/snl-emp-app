@@ -42,7 +42,7 @@ export function useCreateLeave() {
 
   return useMutation({
     mutationFn: async (data: {
-      type: "ANNUAL" | "SICK" | "PERSONAL" | "UNPAID" | "OTHER";
+      type: string; // Leave type code (e.g., "ANNUAL", "SICK", or custom codes)
       reason: string;
       startDate: string;
       endDate: string;
