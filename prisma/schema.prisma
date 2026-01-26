@@ -80,6 +80,9 @@ model UserPreferences {
   windowStates    Json? // Array of window state objects
   appSizes        Json? // { appId: { width, height } } - remembered window sizes
 
+  // App-specific settings
+  teamCalendarSettings Json? // { showEvents, showWorkLogs, showReservations, viewMode }
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -177,6 +180,11 @@ model Employee {
   complaints            Complaint[]
   workLogs              WorkLog[]
   employeeLeaveBalances EmployeeLeaveBalance[]
+
+  // Resource Reservation relations
+  resourceAsEmployee  ResourceReservation[] @relation("ResourceEmployee")
+  resourceAsOwner     ResourceReservation[] @relation("ResourceOwner")
+  resourceAsRequester ResourceReservation[] @relation("Requester")
 
   @@map("employees")
 }
@@ -570,4 +578,49 @@ model ApiLog {
   @@index([statusCode])
   @@index([createdAt])
   @@map("api_logs")
+}
+
+// ==================== RESOURCE RESERVATION SYSTEM ====================
+
+enum ReservationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+model ResourceReservation {
+  id String @id @default(cuid())
+
+  // The employee being reserved (resource)
+  resourceEmployeeId String
+  // The manager who owns this employee (resource owner)
+  resourceOwnerId    String
+  // The manager requesting the reservation
+  requesterId        String
+
+  date        DateTime @db.Date // The date of reservation
+  hours       Float // Number of hours requested (max from work hours settings)
+  title       String // Name/title of the reservation
+  description String?  @db.Text // Optional description
+
+  status ReservationStatus @default(PENDING)
+
+  // Approval details
+  respondedAt DateTime?
+  comment     String? // Response comment from resource owner
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  resourceEmployee Employee @relation("ResourceEmployee", fields: [resourceEmployeeId], references: [id], onDelete: Cascade)
+  resourceOwner    Employee @relation("ResourceOwner", fields: [resourceOwnerId], references: [id], onDelete: Cascade)
+  requester        Employee @relation("Requester", fields: [requesterId], references: [id], onDelete: Cascade)
+
+  @@index([resourceEmployeeId])
+  @@index([resourceOwnerId])
+  @@index([requesterId])
+  @@index([date])
+  @@index([status])
+  @@map("resource_reservations")
 }

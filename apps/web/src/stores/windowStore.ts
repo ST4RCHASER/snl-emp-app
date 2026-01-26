@@ -62,6 +62,8 @@ export interface SerializableWindowState {
     position: { x: number; y: number };
     size: { width: number; height: number };
   };
+  // App-specific props that should persist across reloads
+  props?: Record<string, unknown>;
 }
 
 interface WindowStore {
@@ -98,6 +100,8 @@ interface WindowStore {
   restoreWindow: (windowId: string) => void;
   focusWindow: (windowId: string) => void;
   refreshWindow: (windowId: string) => void;
+  updateWindowProps: (windowId: string, props: Record<string, unknown>) => void;
+  updateWindowTitle: (windowId: string, title: string) => void;
   updatePosition: (
     windowId: string,
     position: { x: number; y: number },
@@ -125,7 +129,8 @@ export const useWindowStore = create<WindowStore>()((set, get) => ({
         zIndex: index + 1,
         animationState: "idle" as const,
         refreshKey: 0,
-        props: undefined,
+        // Restore props from saved state
+        props: ws.props,
       }));
 
       const maxZ = restoredWindows.length;
@@ -165,6 +170,8 @@ export const useWindowStore = create<WindowStore>()((set, get) => ({
       desktopId: w.desktopId,
       snapZone: w.snapZone,
       preSnapState: w.preSnapState,
+      // Include props for apps that need to persist state
+      props: w.props,
     }));
     return { windowStates, appSizes };
   },
@@ -425,6 +432,22 @@ export const useWindowStore = create<WindowStore>()((set, get) => ({
     set((state) => ({
       windows: state.windows.map((w) =>
         w.id === windowId ? { ...w, refreshKey: w.refreshKey + 1 } : w,
+      ),
+    }));
+  },
+
+  updateWindowProps: (windowId, props) => {
+    set((state) => ({
+      windows: state.windows.map((w) =>
+        w.id === windowId ? { ...w, props: { ...w.props, ...props } } : w,
+      ),
+    }));
+  },
+
+  updateWindowTitle: (windowId, title) => {
+    set((state) => ({
+      windows: state.windows.map((w) =>
+        w.id === windowId ? { ...w, title } : w,
       ),
     }));
   },

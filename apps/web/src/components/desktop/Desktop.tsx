@@ -1158,7 +1158,11 @@ export function Desktop() {
             onUnSnap={() => unSnapWindow(win.id)}
           >
             <WindowContext.Provider
-              value={{ refreshKey: win.refreshKey, windowProps: win.props }}
+              value={{
+                windowId: win.id,
+                refreshKey: win.refreshKey,
+                windowProps: win.props,
+              }}
             >
               <AppComponent />
             </WindowContext.Provider>

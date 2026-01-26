@@ -42,12 +42,38 @@ import { logAction } from "@/api/queries/audit";
 import { settingsQueries } from "@/api/queries/settings";
 import { useMobile } from "@/hooks/useMobile";
 
+// Helper to format date in local timezone as YYYY-MM-DD
+function formatLocalDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+// Helper to extract YYYY-MM-DD from any date value (string, Date, or ISO string)
+function getDateKey(dateValue: unknown): string {
+  if (!dateValue) return "";
+  if (typeof dateValue === "string") {
+    // Already a string - just take the date part
+    return dateValue.split("T")[0];
+  }
+  if (dateValue instanceof Date) {
+    return formatLocalDate(dateValue);
+  }
+  // Try to parse as date
+  try {
+    return formatLocalDate(new Date(dateValue as string | number));
+  } catch {
+    return "";
+  }
+}
+
 export default function WorkHours() {
   const isMobile = useMobile();
 
   const [selectedDate, setSelectedDate] = useState(() => {
     const today = new Date();
-    return today.toISOString().split("T")[0];
+    return formatLocalDate(today);
   });
 
   const [currentWeekStart, setCurrentWeekStart] = useState(() => {
@@ -68,8 +94,8 @@ export default function WorkHours() {
     return dates;
   }, [currentWeekStart]);
 
-  const startDate = weekDates[0].toISOString().split("T")[0];
-  const endDate = weekDates[6].toISOString().split("T")[0];
+  const startDate = formatLocalDate(weekDates[0]);
+  const endDate = formatLocalDate(weekDates[6]);
 
   // Fetch work logs for the week
   const { data: workLogs = [], isLoading } = useQuery(
@@ -85,7 +111,7 @@ export default function WorkHours() {
   const logsByDate = useMemo(() => {
     const grouped: Record<string, WorkLog[]> = {};
     workLogs.forEach((log) => {
-      const dateKey = new Date(log.date).toISOString().split("T")[0];
+      const dateKey = getDateKey(log.date);
       if (!grouped[dateKey]) grouped[dateKey] = [];
       grouped[dateKey].push(log);
     });
@@ -97,7 +123,7 @@ export default function WorkHours() {
     const hours: Record<string, number> = {};
     workLogs.forEach((log) => {
       if (log.isDeleted) return; // Don't count deleted logs
-      const dateKey = new Date(log.date).toISOString().split("T")[0];
+      const dateKey = getDateKey(log.date);
       hours[dateKey] = (hours[dateKey] || 0) + log.hours;
     });
     return hours;
@@ -121,7 +147,7 @@ export default function WorkHours() {
     const day = today.getDay();
     const diff = today.getDate() - day + (day === 0 ? -6 : 1);
     setCurrentWeekStart(new Date(today.setDate(diff)));
-    setSelectedDate(new Date().toISOString().split("T")[0]);
+    setSelectedDate(formatLocalDate(new Date()));
     logAction(
       "go_to_today",
       "navigation",
@@ -233,10 +259,10 @@ export default function WorkHours() {
         }}
       >
         {weekDates.map((date) => {
-          const dateKey = date.toISOString().split("T")[0];
+          const dateKey = formatLocalDate(date);
           const hours = hoursPerDay[dateKey] || 0;
           const isSelected = dateKey === selectedDate;
-          const isToday = dateKey === new Date().toISOString().split("T")[0];
+          const isToday = dateKey === formatLocalDate(new Date());
           const percentage = Math.min((hours / workHoursPerDay) * 100, 100);
           const isOvertime = hours > workHoursPerDay;
           const overtimePercentage = hours / workHoursPerDay;
@@ -654,9 +680,7 @@ function EditWorkLogDialog({
   const [title, setTitle] = useState(log.title);
   const [description, setDescription] = useState(log.description || "");
   const [hours, setHours] = useState(String(log.hours));
-  const [date, setDate] = useState(
-    new Date(log.date).toISOString().split("T")[0],
-  );
+  const [date, setDate] = useState(getDateKey(log.date));
 
   const updateLog = useUpdateWorkLog();
 

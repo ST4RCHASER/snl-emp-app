@@ -45,6 +45,29 @@ interface ProfileFormData {
   country: string;
 }
 
+// Helper to extract YYYY-MM-DD from any date value
+function getDateKey(dateValue: unknown): string {
+  if (!dateValue) return "";
+  if (typeof dateValue === "string") {
+    return dateValue.split("T")[0];
+  }
+  if (dateValue instanceof Date) {
+    const year = dateValue.getFullYear();
+    const month = String(dateValue.getMonth() + 1).padStart(2, "0");
+    const day = String(dateValue.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  }
+  try {
+    const d = new Date(dateValue as string | number);
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  } catch {
+    return "";
+  }
+}
+
 export default function Profile() {
   const { user } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
@@ -84,9 +107,7 @@ export default function Profile() {
         fullName: defaultName,
         nickname: myEmployee.nickname || "",
         phone: myEmployee.phone || "",
-        dateOfBirth: myEmployee.dateOfBirth
-          ? new Date(myEmployee.dateOfBirth).toISOString().split("T")[0]
-          : "",
+        dateOfBirth: getDateKey(myEmployee.dateOfBirth),
         addressLine1: myEmployee.addressLine1 || "",
         addressLine2: myEmployee.addressLine2 || "",
         city: myEmployee.city || "",

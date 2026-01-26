@@ -291,7 +291,7 @@ export default function TeamDashboard() {
         }}
       >
         <h2 style={{ margin: 0, fontSize: 20, fontWeight: 600 }}>
-          Team Dashboard
+          Team Worklog
         </h2>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <TabList
@@ -1255,9 +1255,7 @@ function AddWorkForEmployeeForm({
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [hours, setHours] = useState("1");
-  const [date, setDate] = useState(
-    defaultDate || new Date().toISOString().split("T")[0],
-  );
+  const [date, setDate] = useState(defaultDate || formatLocalDate(new Date()));
 
   const createLog = useCreateTeamWorkLog();
 

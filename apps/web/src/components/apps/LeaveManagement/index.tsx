@@ -76,6 +76,10 @@ export default function LeaveManagement() {
     id: string;
     name: string;
   } | null>(null);
+  const [cancelConfirm, setCancelConfirm] = useState<{
+    id: string;
+    type: string;
+  } | null>(null);
   const { user } = useAuth();
   const isMobile = useMobile();
 
@@ -144,6 +148,12 @@ export default function LeaveManagement() {
   const createLeave = useCreateLeave();
   const approveLeave = useApproveLeave();
   const cancelLeave = useCancelLeave();
+
+  const handleCancelLeave = async () => {
+    if (!cancelConfirm) return;
+    await cancelLeave.mutateAsync(cancelConfirm.id);
+    setCancelConfirm(null);
+  };
 
   const [form, setForm] = useState({
     type: "" as string,
@@ -604,17 +614,24 @@ export default function LeaveManagement() {
                     </div>
                   )}
 
-                  {leave.status === "PENDING" && activeTab === "my-leaves" && (
-                    <Button
-                      appearance="subtle"
-                      size="small"
-                      icon={<Dismiss24Regular />}
-                      onClick={() => cancelLeave.mutate(leave.id)}
-                      style={{ marginTop: 4 }}
-                    >
-                      Cancel Request
-                    </Button>
-                  )}
+                  {(leave.status === "PENDING" ||
+                    leave.status === "APPROVED") &&
+                    activeTab === "my-leaves" && (
+                      <Button
+                        appearance="subtle"
+                        size="small"
+                        icon={<Dismiss24Regular />}
+                        onClick={() =>
+                          setCancelConfirm({
+                            id: leave.id,
+                            type: leave.leaveTypeConfig?.name || "Leave",
+                          })
+                        }
+                        style={{ marginTop: 4 }}
+                      >
+                        Cancel Request
+                      </Button>
+                    )}
                   {leave.status === "PENDING" &&
                     activeTab === "pending-approval" && (
                       <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
@@ -710,13 +727,19 @@ export default function LeaveManagement() {
                     </TableCell>
                     <TableCell>{getStatusBadge(leave.status)}</TableCell>
                     <TableCell>
-                      {leave.status === "PENDING" &&
+                      {(leave.status === "PENDING" ||
+                        leave.status === "APPROVED") &&
                         activeTab === "my-leaves" && (
                           <Button
                             appearance="subtle"
                             size="small"
                             icon={<Dismiss24Regular />}
-                            onClick={() => cancelLeave.mutate(leave.id)}
+                            onClick={() =>
+                              setCancelConfirm({
+                                id: leave.id,
+                                type: leave.leaveTypeConfig?.name || "Leave",
+                              })
+                            }
                           >
                             Cancel
                           </Button>
@@ -773,6 +796,38 @@ export default function LeaveManagement() {
             </div>
           )}
       </div>
+
+      {/* Cancel Confirmation Dialog */}
+      <Dialog
+        open={!!cancelConfirm}
+        onOpenChange={(_, d) => !d.open && setCancelConfirm(null)}
+      >
+        <DialogSurface>
+          <DialogBody>
+            <DialogTitle>Cancel Leave Request</DialogTitle>
+            <DialogContent>
+              Are you sure you want to cancel this {cancelConfirm?.type}{" "}
+              request? This action cannot be undone.
+            </DialogContent>
+            <DialogActions>
+              <Button
+                appearance="secondary"
+                onClick={() => setCancelConfirm(null)}
+              >
+                No, Keep It
+              </Button>
+              <Button
+                appearance="primary"
+                onClick={handleCancelLeave}
+                disabled={cancelLeave.isPending}
+                style={{ backgroundColor: tokens.colorPaletteRedBackground3 }}
+              >
+                {cancelLeave.isPending ? "Cancelling..." : "Yes, Cancel Leave"}
+              </Button>
+            </DialogActions>
+          </DialogBody>
+        </DialogSurface>
+      </Dialog>
     </div>
   );
 }

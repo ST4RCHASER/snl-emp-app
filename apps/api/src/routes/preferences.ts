@@ -60,6 +60,10 @@ export const preferencesRoutes = new Elysia({ prefix: "/api/preferences" })
         windowStates:
           body.windowStates === null ? { set: null } : body.windowStates,
         appSizes: body.appSizes === null ? { set: null } : body.appSizes,
+        teamCalendarSettings:
+          body.teamCalendarSettings === null
+            ? { set: null }
+            : body.teamCalendarSettings,
       };
 
       const preferences = await prisma.userPreferences.upsert({
@@ -74,6 +78,7 @@ export const preferencesRoutes = new Elysia({ prefix: "/api/preferences" })
           virtualDesktops: body.virtualDesktops ?? undefined,
           windowStates: body.windowStates ?? undefined,
           appSizes: body.appSizes ?? undefined,
+          teamCalendarSettings: body.teamCalendarSettings ?? undefined,
         },
       });
 
@@ -150,6 +155,23 @@ export const preferencesRoutes = new Elysia({ prefix: "/api/preferences" })
                 height: t.Number(),
               }),
             ),
+            t.Null(),
+          ]),
+        ),
+        teamCalendarSettings: t.Optional(
+          t.Union([
+            t.Object({
+              showEvents: t.Optional(t.Boolean()),
+              showWorkLogs: t.Optional(t.Boolean()),
+              showReservations: t.Optional(t.Boolean()),
+              viewMode: t.Optional(
+                t.Union([
+                  t.Literal("day"),
+                  t.Literal("week"),
+                  t.Literal("month"),
+                ]),
+              ),
+            }),
             t.Null(),
           ]),
         ),

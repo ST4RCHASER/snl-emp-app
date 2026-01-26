@@ -27,6 +27,13 @@ export type ShortcutItem = { id: string; appId: string };
 export type DesktopShortcuts = ShortcutItem[]; // Array of shortcut objects
 export type AppSizes = Record<string, { width: number; height: number }>;
 
+export interface TeamCalendarSettings {
+  showEvents?: boolean;
+  showWorkLogs?: boolean;
+  showReservations?: boolean;
+  viewMode?: "day" | "week" | "month";
+}
+
 export interface PreferencesUpdateData {
   theme?: "system" | "light" | "dark";
   accentColor?: string;
@@ -45,6 +52,8 @@ export interface PreferencesUpdateData {
   activeDesktopId?: string | null;
   windowStates?: SerializableWindowState[] | null;
   appSizes?: AppSizes | null;
+  // App-specific settings
+  teamCalendarSettings?: TeamCalendarSettings | null;
 }
 
 export function useUpdatePreferences() {

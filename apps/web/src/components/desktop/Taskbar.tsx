@@ -16,6 +16,7 @@ import {
   Calendar24Regular,
   CalendarLtr24Regular,
   CalendarPerson24Regular,
+  CalendarClock24Regular,
   People24Regular,
   PeopleTeam24Regular,
   ChatWarning24Regular,
@@ -59,7 +60,9 @@ const getIcon = (appId: string, size: number = 1.0): React.ReactNode => {
     "work-hours": <Clock24Regular style={iconStyle} />,
     "work-logs": <Clock24Regular style={iconStyle} />,
     "team-dashboard": <PeopleTeam24Regular style={iconStyle} />,
+    "team-worklog": <PeopleTeam24Regular style={iconStyle} />,
     "team-calendar": <CalendarPerson24Regular style={iconStyle} />,
+    "resource-reservation": <CalendarClock24Regular style={iconStyle} />,
     "audit-logs": <DocumentSearch24Regular style={iconStyle} />,
     youtube: <Video24Regular style={iconStyle} />,
   };

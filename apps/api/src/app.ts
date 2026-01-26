@@ -17,6 +17,7 @@ import {
   uploadRoutes,
   workLogRoutes,
   auditRoutes,
+  reservationRoutes,
 } from "./routes/index.js";
 
 // Store request start times
@@ -79,6 +80,7 @@ export const app = new Elysia()
   .use(uploadRoutes)
   .use(workLogRoutes)
   .use(auditRoutes)
+  .use(reservationRoutes)
   .get("/", () => ({
     message: "SNL Employee Management API",
     version: "1.0.0",

@@ -82,10 +82,10 @@ export const appRegistry: AppDefinition[] = [
     defaultSize: { width: 700, height: 550 },
   },
   {
-    id: "team-dashboard",
-    name: "Team Dashboard",
+    id: "team-worklog",
+    name: "Team Worklog",
     icon: "PeopleTeam",
-    component: lazy(() => import("./TeamDashboard")),
+    component: lazy(() => import("./TeamWorklog")),
     defaultSize: { width: 1000, height: 650 },
     roles: ["MANAGEMENT", "DEVELOPER"],
   },
@@ -111,6 +111,14 @@ export const appRegistry: AppDefinition[] = [
     icon: "CalendarPerson",
     component: lazy(() => import("./TeamCalendar")),
     defaultSize: { width: 900, height: 650 },
+    roles: ["MANAGEMENT", "DEVELOPER"],
+  },
+  {
+    id: "resource-reservation",
+    name: "Resource Reservation",
+    icon: "CalendarClock",
+    component: lazy(() => import("./ResourceReservation")),
+    defaultSize: { width: 1000, height: 700 },
     roles: ["MANAGEMENT", "DEVELOPER"],
   },
 ];

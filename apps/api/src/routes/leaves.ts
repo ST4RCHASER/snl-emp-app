@@ -336,9 +336,11 @@ export const leaveRoutes = new Elysia({ prefix: "/api/leaves" })
         return { message: "Can only cancel your own leave requests" };
       }
 
-      if (leave.status !== "PENDING") {
+      if (leave.status !== "PENDING" && leave.status !== "APPROVED") {
         set.status = 400;
-        return { message: "Can only cancel pending leave requests" };
+        return {
+          message: "Can only cancel pending or approved leave requests",
+        };
       }
 
       await prisma.leaveRequest.update({

@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Button,
@@ -9,6 +9,7 @@ import {
   Tab,
   TabList,
   Switch,
+  Input,
 } from "@fluentui/react-components";
 import {
   ChevronLeft24Regular,
@@ -26,6 +27,8 @@ import {
   QuestionCircle16Filled,
   Circle16Regular,
   Open16Regular,
+  Search24Regular,
+  Person24Regular,
 } from "@fluentui/react-icons";
 import {
   calendarQueries,
@@ -34,7 +37,21 @@ import {
   type Holiday,
 } from "@/api/queries/calendar";
 import { workLogQueries, type WorkLog } from "@/api/queries/worklogs";
-import { useWindowProps } from "@/components/desktop/WindowContext";
+import { employeeQueries } from "@/api/queries/employees";
+import {
+  reservationQueries,
+  type Reservation,
+} from "@/api/queries/reservations";
+import {
+  useWindowProps,
+  useUpdateWindowProps,
+  useUpdateWindowTitle,
+} from "@/components/desktop/WindowContext";
+import {
+  preferencesQueries,
+  useUpdatePreferences,
+  type TeamCalendarSettings,
+} from "@/api/queries/preferences";
 
 type ViewMode = "day" | "week" | "month";
 
@@ -80,7 +97,31 @@ function getEventColor(colorId?: string): string {
   if (colorId && EVENT_COLORS[colorId]) {
     return EVENT_COLORS[colorId];
   }
-  return "#7c3aed"; // default violet
+  return "#15803d"; // default green
+}
+
+// Helper to format date in local timezone as YYYY-MM-DD
+function formatLocalDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+// Helper to extract YYYY-MM-DD from any date value (string, Date, or ISO string)
+function getDateKey(dateValue: unknown): string {
+  if (!dateValue) return "";
+  if (typeof dateValue === "string") {
+    return dateValue.split("T")[0];
+  }
+  if (dateValue instanceof Date) {
+    return formatLocalDate(dateValue);
+  }
+  try {
+    return formatLocalDate(new Date(dateValue as string | number));
+  } catch {
+    return "";
+  }
 }
 
 function formatTime(dateTime?: string): string {
@@ -109,7 +150,7 @@ function ResponseStatusIcon({
 }) {
   switch (status) {
     case "accepted":
-      return <CheckmarkCircle16Filled style={{ color: "#22c55e" }} />;
+      return <CheckmarkCircle16Filled style={{ color: "#5b21b6" }} />;
     case "declined":
       return <DismissCircle16Filled style={{ color: "#ef4444" }} />;
     case "tentative":
@@ -624,7 +665,7 @@ function WorkLogDetailPopup({
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <Clock16Regular style={{ color: "#22c55e" }} />
+            <Clock16Regular style={{ color: "#5b21b6" }} />
             <span style={{ fontWeight: 600 }}>Work Logged</span>
           </div>
           <Button
@@ -649,7 +690,7 @@ function WorkLogDetailPopup({
                 year: "numeric",
               })}
             </div>
-            <div style={{ fontSize: 20, fontWeight: 600, color: "#22c55e" }}>
+            <div style={{ fontSize: 20, fontWeight: 600, color: "#5b21b6" }}>
               {totalHours} hours total
             </div>
           </div>
@@ -663,7 +704,7 @@ function WorkLogDetailPopup({
                   padding: 12,
                   background: tokens.colorNeutralBackground2,
                   borderRadius: 8,
-                  borderLeft: "4px solid #22c55e",
+                  borderLeft: "4px solid #5b21b6",
                 }}
               >
                 <div
@@ -678,7 +719,7 @@ function WorkLogDetailPopup({
                   </div>
                   <Badge
                     appearance="filled"
-                    style={{ background: "#22c55e", color: "white" }}
+                    style={{ background: "#5b21b6", color: "white" }}
                   >
                     {log.hours}h
                   </Badge>
@@ -703,24 +744,317 @@ function WorkLogDetailPopup({
   );
 }
 
+// Reservation Detail Popup Component (floating popover)
+function ReservationDetailPopup({
+  reservations,
+  date,
+  position,
+  containerRect,
+  onClose,
+}: {
+  reservations: Reservation[];
+  date: Date;
+  position: { x: number; y: number };
+  containerRect: DOMRect | null;
+  onClose: () => void;
+}) {
+  const totalHours = reservations.reduce((sum, r) => sum + r.hours, 0);
+
+  // Calculate popup position relative to container
+  const popupWidth = 350;
+  const popupMaxHeight = 400;
+  const padding = 16;
+
+  const containerLeft = containerRect?.left || 0;
+  const containerTop = containerRect?.top || 0;
+  const containerWidth = containerRect?.width || window.innerWidth;
+  const containerHeight = containerRect?.height || window.innerHeight;
+
+  let left = position.x - containerLeft;
+  let top = position.y - containerTop;
+
+  if (left + popupWidth + padding > containerWidth) {
+    left = left - popupWidth - 10;
+  }
+  if (top + popupMaxHeight + padding > containerHeight) {
+    top = Math.max(padding, containerHeight - popupMaxHeight - padding);
+  }
+  left = Math.max(padding, left);
+  top = Math.max(padding, top);
+
+  const getRequesterName = (r: Reservation) =>
+    r.requester.fullName || r.requester.user.name || r.requester.user.email;
+  const getRequesterAvatar = (r: Reservation) =>
+    r.requester.avatar || r.requester.user.image;
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div
+        style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          zIndex: 1000,
+        }}
+        onClick={onClose}
+      />
+      {/* Floating Popover */}
+      <div
+        style={{
+          position: "absolute",
+          top,
+          left,
+          width: popupWidth,
+          maxHeight: popupMaxHeight,
+          background: tokens.colorNeutralBackground1,
+          borderRadius: 12,
+          overflow: "hidden",
+          display: "flex",
+          flexDirection: "column",
+          boxShadow: "0 8px 32px rgba(0, 0, 0, 0.3)",
+          border: `1px solid ${tokens.colorNeutralStroke1}`,
+          zIndex: 1001,
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            padding: "12px 16px",
+            borderBottom: `1px solid ${tokens.colorNeutralStroke1}`,
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <People20Regular style={{ color: "#b45309" }} />
+            <span style={{ fontWeight: 600 }}>Reservations</span>
+          </div>
+          <Button
+            appearance="subtle"
+            size="small"
+            icon={<Dismiss24Regular />}
+            onClick={onClose}
+          />
+        </div>
+
+        {/* Content */}
+        <div style={{ padding: 16, overflow: "auto" }}>
+          {/* Date */}
+          <div style={{ marginBottom: 16 }}>
+            <div
+              style={{ fontSize: 14, color: tokens.colorNeutralForeground2 }}
+            >
+              {date.toLocaleDateString("en-US", {
+                weekday: "long",
+                month: "long",
+                day: "numeric",
+                year: "numeric",
+              })}
+            </div>
+            <div style={{ fontSize: 20, fontWeight: 600, color: "#b45309" }}>
+              {totalHours} hours reserved
+            </div>
+          </div>
+
+          {/* Reservations list */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {reservations.map((res) => (
+              <div
+                key={res.id}
+                style={{
+                  padding: 12,
+                  background: tokens.colorNeutralBackground2,
+                  borderRadius: 8,
+                  borderLeft: "4px solid #b45309",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "flex-start",
+                    marginBottom: 8,
+                  }}
+                >
+                  <div style={{ fontWeight: 500, fontSize: 14 }}>
+                    {res.title}
+                  </div>
+                  <Badge
+                    appearance="filled"
+                    style={{ background: "#b45309", color: "white" }}
+                  >
+                    {res.hours}h
+                  </Badge>
+                </div>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    fontSize: 12,
+                    color: tokens.colorNeutralForeground3,
+                  }}
+                >
+                  <Avatar
+                    size={20}
+                    name={getRequesterName(res)}
+                    image={{ src: getRequesterAvatar(res) || undefined }}
+                  />
+                  <span>Reserved by {getRequesterName(res)}</span>
+                </div>
+                {res.description && (
+                  <div
+                    style={{
+                      fontSize: 12,
+                      color: tokens.colorNeutralForeground3,
+                      marginTop: 8,
+                    }}
+                  >
+                    {res.description}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
 export default function TeamCalendar() {
   const windowProps = useWindowProps<TeamCalendarProps>();
+  const updateWindowProps = useUpdateWindowProps();
+  const updateWindowTitle = useUpdateWindowTitle();
   const containerRef = useRef<HTMLDivElement>(null);
 
+  const [employeeSearch, setEmployeeSearch] = useState("");
+
+  // Get employee from window props (persisted across reloads)
   const employeeId = windowProps?.employeeId;
   const employeeName = windowProps?.employeeName || "Employee";
   const employeeEmail = windowProps?.employeeEmail || "";
   const employeeAvatar = windowProps?.employeeAvatar;
+
+  // Function to select an employee and persist to window props
+  const selectEmployee = (employee: {
+    id: string;
+    name: string;
+    email: string;
+    avatar?: string | null;
+  }) => {
+    updateWindowProps({
+      employeeId: employee.id,
+      employeeName: employee.name,
+      employeeEmail: employee.email,
+      employeeAvatar: employee.avatar,
+    });
+    // Update window title to show selected employee
+    updateWindowTitle(`${employee.name}'s Calendar`);
+  };
+
+  // Function to clear selection
+  const clearSelection = () => {
+    updateWindowProps({
+      employeeId: undefined,
+      employeeName: undefined,
+      employeeEmail: undefined,
+      employeeAvatar: undefined,
+    });
+    setEmployeeSearch("");
+    // Reset window title
+    updateWindowTitle("Team Calendar");
+  };
+  // Load preferences
+  const { data: preferences } = useQuery(preferencesQueries.user);
+  const updatePreferences = useUpdatePreferences();
+  const calendarSettings = (
+    preferences as { teamCalendarSettings?: TeamCalendarSettings } | undefined
+  )?.teamCalendarSettings;
+
   const [viewMode, setViewMode] = useState<ViewMode>("month");
   const [selectedDate, setSelectedDate] = useState(() => new Date());
   const [showEvents, setShowEvents] = useState(true);
   const [showWorkLogs, setShowWorkLogs] = useState(true);
+  const [showReservations, setShowReservations] = useState(true);
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
+
+  // Load settings from preferences once
+  useEffect(() => {
+    if (calendarSettings && !settingsLoaded) {
+      if (calendarSettings.showEvents !== undefined)
+        setShowEvents(calendarSettings.showEvents);
+      if (calendarSettings.showWorkLogs !== undefined)
+        setShowWorkLogs(calendarSettings.showWorkLogs);
+      if (calendarSettings.showReservations !== undefined)
+        setShowReservations(calendarSettings.showReservations);
+      if (calendarSettings.viewMode) setViewMode(calendarSettings.viewMode);
+      setSettingsLoaded(true);
+    }
+  }, [calendarSettings, settingsLoaded]);
+
+  // Save settings to database
+  const saveSettings = useCallback(
+    (settings: TeamCalendarSettings) => {
+      updatePreferences.mutate({
+        teamCalendarSettings: {
+          ...calendarSettings,
+          ...settings,
+        },
+      });
+    },
+    [updatePreferences, calendarSettings],
+  );
+
+  // Handlers that save to database
+  const handleShowEventsChange = useCallback(
+    (checked: boolean) => {
+      setShowEvents(checked);
+      saveSettings({ showEvents: checked });
+    },
+    [saveSettings],
+  );
+
+  const handleShowWorkLogsChange = useCallback(
+    (checked: boolean) => {
+      setShowWorkLogs(checked);
+      saveSettings({ showWorkLogs: checked });
+    },
+    [saveSettings],
+  );
+
+  const handleShowReservationsChange = useCallback(
+    (checked: boolean) => {
+      setShowReservations(checked);
+      saveSettings({ showReservations: checked });
+    },
+    [saveSettings],
+  );
+
+  const handleViewModeChange = useCallback(
+    (mode: ViewMode) => {
+      setViewMode(mode);
+      saveSettings({ viewMode: mode });
+    },
+    [saveSettings],
+  );
+
   const [selectedEvent, setSelectedEvent] = useState<{
     event: CalendarEvent;
     position: { x: number; y: number };
   } | null>(null);
   const [selectedWorkLogs, setSelectedWorkLogs] = useState<{
     logs: WorkLog[];
+    date: Date;
+    position: { x: number; y: number };
+  } | null>(null);
+  const [selectedReservations, setSelectedReservations] = useState<{
+    reservations: Reservation[];
     date: Date;
     position: { x: number; y: number };
   } | null>(null);
@@ -799,6 +1133,16 @@ export default function TeamCalendar() {
   );
   const holidays = holidaysData?.holidays || [];
 
+  // Fetch reservations for this employee
+  const { data: reservations = [] } = useQuery({
+    ...reservationQueries.resourceReservations(
+      employeeId || "",
+      startDate.split("T")[0],
+      endDate.split("T")[0],
+    ),
+    enabled: showReservations && !!employeeId,
+  });
+
   const events = calendarData?.events || [];
 
   // Filter out working location events
@@ -836,10 +1180,19 @@ export default function TeamCalendar() {
 
   // Get work logs for a date
   const getWorkLogsForDate = (date: Date): WorkLog[] => {
-    const dateStr = date.toISOString().split("T")[0];
+    const dateStr = formatLocalDate(date);
     return workLogs.filter((w) => {
-      const logDate = new Date(w.date).toISOString().split("T")[0];
+      const logDate = getDateKey(w.date);
       return logDate === dateStr && !w.isDeleted;
+    });
+  };
+
+  // Get reservations for a date (only approved ones)
+  const getReservationsForDate = (date: Date): Reservation[] => {
+    const dateStr = formatLocalDate(date);
+    return reservations.filter((r) => {
+      const resDate = getDateKey(r.date);
+      return resDate === dateStr && r.status === "APPROVED";
     });
   };
 
@@ -1006,6 +1359,9 @@ export default function TeamCalendar() {
                 const dayWorkLogs = showWorkLogs
                   ? getWorkLogsForDate(date)
                   : [];
+                const dayReservations = showReservations
+                  ? getReservationsForDate(date)
+                  : [];
                 const dayHolidays = getHolidaysForDate(date);
                 const workingLoc = showEvents
                   ? getWorkingLocation(date)
@@ -1031,7 +1387,7 @@ export default function TeamCalendar() {
                     }}
                     onClick={() => {
                       setSelectedDate(date);
-                      setViewMode("day");
+                      handleViewModeChange("day");
                     }}
                   >
                     {/* Date header */}
@@ -1070,12 +1426,16 @@ export default function TeamCalendar() {
                       {workingLoc && (
                         <Badge
                           size="small"
-                          color={
-                            workingLoc.summary?.toLowerCase().includes("office")
-                              ? "success"
-                              : "brand"
-                          }
-                          style={{ fontSize: 9, padding: "0 4px" }}
+                          style={{
+                            fontSize: 9,
+                            padding: "0 4px",
+                            background: workingLoc.summary
+                              ?.toLowerCase()
+                              .includes("office")
+                              ? "#0891b2"
+                              : "#0d9488",
+                            color: "white",
+                          }}
                         >
                           {workingLoc.summary}
                         </Badge>
@@ -1148,7 +1508,7 @@ export default function TeamCalendar() {
                           padding: "2px 4px",
                           marginBottom: 2,
                           borderRadius: 3,
-                          background: "#22c55e",
+                          background: "#5b21b6",
                           color: "white",
                           display: "flex",
                           alignItems: "center",
@@ -1173,6 +1533,76 @@ export default function TeamCalendar() {
                           >
                             {dayWorkLogs[0].title}
                           </span>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Reservations indicator */}
+                    {dayReservations.length > 0 && (
+                      <div
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedReservations({
+                            reservations: dayReservations,
+                            date,
+                            position: { x: e.clientX, y: e.clientY },
+                          });
+                        }}
+                        style={{
+                          fontSize: 10,
+                          padding: "2px 4px",
+                          marginBottom: 2,
+                          borderRadius: 3,
+                          background: "#b45309",
+                          color: "white",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 4,
+                          cursor: "pointer",
+                          overflow: "hidden",
+                        }}
+                      >
+                        {dayReservations.slice(0, 2).map((res) => (
+                          <div
+                            key={res.id}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 2,
+                            }}
+                          >
+                            <Avatar
+                              size={16}
+                              name={
+                                res.requester.fullName ||
+                                res.requester.user.name ||
+                                res.requester.user.email
+                              }
+                              image={{
+                                src:
+                                  res.requester.avatar ||
+                                  res.requester.user.image ||
+                                  undefined,
+                              }}
+                            />
+                            <span
+                              style={{
+                                maxWidth: 60,
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              {res.title}
+                            </span>
+                          </div>
+                        ))}
+                        <span style={{ fontWeight: 500 }}>
+                          {dayReservations.reduce((sum, r) => sum + r.hours, 0)}
+                          h
+                        </span>
+                        {dayReservations.length > 2 && (
+                          <span>+{dayReservations.length - 2}</span>
                         )}
                       </div>
                     )}
@@ -1247,8 +1677,15 @@ export default function TeamCalendar() {
               : undefined;
             const dayHolidays = getHolidaysForDate(date);
             const dayWorkLogs = showWorkLogs ? getWorkLogsForDate(date) : [];
+            const dayReservations = showReservations
+              ? getReservationsForDate(date)
+              : [];
             const totalWorkHours = dayWorkLogs.reduce(
               (sum, w) => sum + w.hours,
+              0,
+            );
+            const totalReservationHours = dayReservations.reduce(
+              (sum, r) => sum + r.hours,
               0,
             );
 
@@ -1304,12 +1741,15 @@ export default function TeamCalendar() {
                   {workingLoc && (
                     <Badge
                       size="small"
-                      color={
-                        workingLoc.summary?.toLowerCase().includes("office")
-                          ? "success"
-                          : "brand"
-                      }
-                      style={{ fontSize: 9 }}
+                      style={{
+                        fontSize: 9,
+                        background: workingLoc.summary
+                          ?.toLowerCase()
+                          .includes("office")
+                          ? "#0891b2"
+                          : "#0d9488",
+                        color: "white",
+                      }}
                     >
                       {workingLoc.summary}
                     </Badge>
@@ -1328,7 +1768,7 @@ export default function TeamCalendar() {
                         fontSize: 9,
                         padding: "2px 6px",
                         borderRadius: 4,
-                        background: "#22c55e",
+                        background: "#5b21b6",
                         color: "white",
                         display: "flex",
                         alignItems: "center",
@@ -1338,6 +1778,67 @@ export default function TeamCalendar() {
                     >
                       <Clock16Regular style={{ fontSize: 10 }} />
                       {totalWorkHours}h
+                    </div>
+                  )}
+                  {totalReservationHours > 0 && (
+                    <div
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedReservations({
+                          reservations: dayReservations,
+                          date,
+                          position: { x: e.clientX, y: e.clientY },
+                        });
+                      }}
+                      style={{
+                        fontSize: 9,
+                        padding: "2px 6px",
+                        borderRadius: 4,
+                        background: "#b45309",
+                        color: "white",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 2,
+                        cursor: "pointer",
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      {dayReservations.slice(0, 2).map((res) => (
+                        <div
+                          key={res.id}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 2,
+                          }}
+                        >
+                          <Avatar
+                            size={16}
+                            name={
+                              res.requester.fullName ||
+                              res.requester.user.name ||
+                              res.requester.user.email
+                            }
+                            image={{
+                              src:
+                                res.requester.avatar ||
+                                res.requester.user.image ||
+                                undefined,
+                            }}
+                          />
+                          <span
+                            style={{
+                              maxWidth: 50,
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {res.title}
+                          </span>
+                        </div>
+                      ))}
+                      {totalReservationHours}h
                     </div>
                   )}
                 </div>
@@ -1447,6 +1948,9 @@ export default function TeamCalendar() {
       ? getEventsForDate(selectedDate).filter((e) => e.start.dateTime)
       : [];
     const dayWorkLogs = showWorkLogs ? getWorkLogsForDate(selectedDate) : [];
+    const dayReservations = showReservations
+      ? getReservationsForDate(selectedDate)
+      : [];
     const workingLoc = showEvents
       ? getWorkingLocation(selectedDate)
       : undefined;
@@ -1494,11 +1998,14 @@ export default function TeamCalendar() {
             {workingLoc && (
               <Badge
                 size="small"
-                color={
-                  workingLoc.summary?.toLowerCase().includes("office")
-                    ? "success"
-                    : "brand"
-                }
+                style={{
+                  background: workingLoc.summary
+                    ?.toLowerCase()
+                    .includes("office")
+                    ? "#0891b2"
+                    : "#0d9488",
+                  color: "white",
+                }}
               >
                 {workingLoc.summary}
               </Badge>
@@ -1539,8 +2046,8 @@ export default function TeamCalendar() {
                 gap: 4,
               }}
             >
-              <Clock16Regular style={{ color: "#22c55e" }} />
-              <span style={{ color: "#22c55e" }}>
+              <Clock16Regular style={{ color: "#5b21b6" }} />
+              <span style={{ color: "#5b21b6" }}>
                 Work Logged: {dayWorkLogs.reduce((sum, w) => sum + w.hours, 0)}h
               </span>
             </div>
@@ -1553,13 +2060,85 @@ export default function TeamCalendar() {
                   marginBottom: 4,
                   background: tokens.colorNeutralBackground1,
                   borderRadius: 4,
-                  borderLeft: "3px solid #22c55e",
+                  borderLeft: "3px solid #5b21b6",
                 }}
               >
                 <span style={{ fontWeight: 500 }}>{log.title}</span>
                 <span style={{ color: tokens.colorNeutralForeground3 }}>
                   {" "}
                   - {log.hours}h
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Reservations summary */}
+        {dayReservations.length > 0 && (
+          <div
+            onClick={(e) => {
+              setSelectedReservations({
+                reservations: dayReservations,
+                date: selectedDate,
+                position: { x: e.clientX, y: e.clientY },
+              });
+            }}
+            style={{
+              padding: 12,
+              borderBottom: `1px solid ${tokens.colorNeutralStroke1}`,
+              background: tokens.colorNeutralBackground2,
+              flexShrink: 0,
+              cursor: "pointer",
+            }}
+          >
+            <div
+              style={{
+                fontSize: 12,
+                fontWeight: 600,
+                marginBottom: 8,
+                display: "flex",
+                alignItems: "center",
+                gap: 4,
+              }}
+            >
+              <People20Regular style={{ color: "#b45309" }} />
+              <span style={{ color: "#b45309" }}>
+                Reserved: {dayReservations.reduce((sum, r) => sum + r.hours, 0)}
+                h
+              </span>
+            </div>
+            {dayReservations.map((res) => (
+              <div
+                key={res.id}
+                style={{
+                  fontSize: 11,
+                  padding: 4,
+                  marginBottom: 4,
+                  background: tokens.colorNeutralBackground1,
+                  borderRadius: 4,
+                  borderLeft: "3px solid #b45309",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                }}
+              >
+                <Avatar
+                  size={20}
+                  name={
+                    res.requester.fullName ||
+                    res.requester.user.name ||
+                    res.requester.user.email
+                  }
+                  image={{
+                    src:
+                      res.requester.avatar ||
+                      res.requester.user.image ||
+                      undefined,
+                  }}
+                />
+                <span style={{ fontWeight: 500 }}>{res.title}</span>
+                <span style={{ color: tokens.colorNeutralForeground3 }}>
+                  - {res.hours}h
                 </span>
               </div>
             ))}
@@ -1656,7 +2235,30 @@ export default function TeamCalendar() {
 
   const isLoading = loadingEvents || loadingWorkLogs;
 
-  // Show message when no employee is selected
+  // Fetch employees list for selection
+  const { data: employeesData, isLoading: loadingEmployees } = useQuery({
+    ...employeeQueries.all,
+    enabled: !employeeId,
+  });
+
+  // Ensure employees is always an array
+  const employees = Array.isArray(employeesData) ? employeesData : [];
+
+  // Filter employees based on search
+  const filteredEmployees = useMemo(() => {
+    if (!employeeSearch.trim()) return employees;
+    const search = employeeSearch.toLowerCase();
+    return employees.filter((emp) => {
+      const name = emp.fullName || emp.user.name || "";
+      const email = emp.user.email;
+      return (
+        name.toLowerCase().includes(search) ||
+        email.toLowerCase().includes(search)
+      );
+    });
+  }, [employees, employeeSearch]);
+
+  // Show employee selection when no employee is selected
   if (!employeeId) {
     return (
       <div
@@ -1664,20 +2266,116 @@ export default function TeamCalendar() {
           height: "100%",
           display: "flex",
           flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "center",
-          color: tokens.colorNeutralForeground3,
-          gap: 12,
-          padding: 40,
-          textAlign: "center",
+          overflow: "hidden",
         }}
       >
-        <Calendar24Regular style={{ fontSize: 48, opacity: 0.5 }} />
-        <h3 style={{ margin: 0 }}>No Employee Selected</h3>
-        <p style={{ margin: 0 }}>
-          Open this app from Team Dashboard by clicking on an employee's name or
-          avatar.
-        </p>
+        {/* Header */}
+        <div
+          style={{
+            padding: "16px 20px",
+            borderBottom: `1px solid ${tokens.colorNeutralStroke1}`,
+            flexShrink: 0,
+          }}
+        >
+          <h2 style={{ margin: "0 0 4px", fontSize: 20, fontWeight: 600 }}>
+            Team Calendar
+          </h2>
+          <p
+            style={{
+              margin: 0,
+              fontSize: 13,
+              color: tokens.colorNeutralForeground3,
+            }}
+          >
+            Select an employee to view their calendar
+          </p>
+        </div>
+
+        {/* Search */}
+        <div style={{ padding: "12px 20px", flexShrink: 0 }}>
+          <Input
+            placeholder="Search employees..."
+            value={employeeSearch}
+            onChange={(_, d) => setEmployeeSearch(d.value)}
+            contentBefore={<Search24Regular />}
+            style={{ width: "100%" }}
+          />
+        </div>
+
+        {/* Employee List */}
+        <div style={{ flex: 1, overflow: "auto", padding: "0 20px 20px" }}>
+          {loadingEmployees ? (
+            <div
+              style={{ display: "flex", justifyContent: "center", padding: 40 }}
+            >
+              <Spinner label="Loading employees..." />
+            </div>
+          ) : filteredEmployees.length === 0 ? (
+            <div
+              style={{
+                textAlign: "center",
+                padding: 40,
+                color: tokens.colorNeutralForeground3,
+              }}
+            >
+              {employeeSearch ? "No employees found" : "No employees available"}
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              {filteredEmployees.map((emp) => {
+                const name = emp.fullName || emp.user.name || emp.user.email;
+                const avatar = emp.avatar || emp.user.image;
+
+                return (
+                  <Button
+                    key={emp.id}
+                    appearance="subtle"
+                    style={{
+                      justifyContent: "flex-start",
+                      padding: "12px 16px",
+                      height: "auto",
+                    }}
+                    onClick={() => {
+                      selectEmployee({
+                        id: emp.id,
+                        name,
+                        email: emp.user.email,
+                        avatar,
+                      });
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 12,
+                      }}
+                    >
+                      <Avatar
+                        size={40}
+                        name={name}
+                        image={{ src: avatar || undefined }}
+                      />
+                      <div style={{ textAlign: "left" }}>
+                        <div style={{ fontWeight: 500, fontSize: 14 }}>
+                          {name}
+                        </div>
+                        <div
+                          style={{
+                            fontSize: 12,
+                            color: tokens.colorNeutralForeground3,
+                          }}
+                        >
+                          {emp.user.email}
+                        </div>
+                      </div>
+                    </div>
+                  </Button>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
     );
   }
@@ -1721,6 +2419,16 @@ export default function TeamCalendar() {
             </div>
           </div>
         </div>
+        {/* Show change button to allow selecting a different employee */}
+        {employeeId && (
+          <Button
+            appearance="subtle"
+            icon={<Person24Regular />}
+            onClick={clearSelection}
+          >
+            Change
+          </Button>
+        )}
       </div>
 
       {/* Controls */}
@@ -1759,21 +2467,28 @@ export default function TeamCalendar() {
           <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
             <Switch
               checked={showEvents}
-              onChange={(_, d) => setShowEvents(d.checked)}
+              onChange={(_, d) => handleShowEventsChange(d.checked)}
               label="Events"
             />
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
             <Switch
               checked={showWorkLogs}
-              onChange={(_, d) => setShowWorkLogs(d.checked)}
+              onChange={(_, d) => handleShowWorkLogsChange(d.checked)}
               label="Work Logs"
+            />
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <Switch
+              checked={showReservations}
+              onChange={(_, d) => handleShowReservationsChange(d.checked)}
+              label="Reservations"
             />
           </div>
 
           <TabList
             selectedValue={viewMode}
-            onTabSelect={(_, d) => setViewMode(d.value as ViewMode)}
+            onTabSelect={(_, d) => handleViewModeChange(d.value as ViewMode)}
             size="small"
           >
             <Tab value="day" icon={<Calendar24Regular />}>
@@ -1850,6 +2565,17 @@ export default function TeamCalendar() {
           position={selectedWorkLogs.position}
           containerRect={getContainerRect()}
           onClose={() => setSelectedWorkLogs(null)}
+        />
+      )}
+
+      {/* Reservation Detail Popup */}
+      {selectedReservations && (
+        <ReservationDetailPopup
+          reservations={selectedReservations.reservations}
+          date={selectedReservations.date}
+          position={selectedReservations.position}
+          containerRect={getContainerRect()}
+          onClose={() => setSelectedReservations(null)}
         />
       )}
     </div>

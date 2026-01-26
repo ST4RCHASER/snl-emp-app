@@ -130,7 +130,11 @@ export function MobileAppDrawer({ backgroundImage }: MobileAppDrawerProps) {
             }
           >
             <WindowContext.Provider
-              value={{ refreshKey, windowProps: undefined }}
+              value={{
+                windowId: `mobile-${openApp}`,
+                refreshKey,
+                windowProps: undefined,
+              }}
             >
               <AppComponent />
             </WindowContext.Provider>

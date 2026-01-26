@@ -1,12 +1,21 @@
-import { createContext, useContext, useEffect, useRef } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useRef,
+  useCallback,
+} from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { useWindowStore } from "@/stores/windowStore";
 
 interface WindowContextValue {
+  windowId: string;
   refreshKey: number;
   windowProps?: Record<string, unknown>;
 }
 
 export const WindowContext = createContext<WindowContextValue>({
+  windowId: "",
   refreshKey: 0,
 });
 
@@ -16,6 +25,44 @@ export function useWindowRefreshKey() {
 
 export function useWindowProps<T = Record<string, unknown>>(): T | undefined {
   return useContext(WindowContext).windowProps as T | undefined;
+}
+
+export function useWindowId() {
+  return useContext(WindowContext).windowId;
+}
+
+/**
+ * Hook to update window props (for persisting app state across reloads)
+ */
+export function useUpdateWindowProps() {
+  const windowId = useWindowId();
+  const updateWindowProps = useWindowStore((s) => s.updateWindowProps);
+
+  return useCallback(
+    (props: Record<string, unknown>) => {
+      if (windowId) {
+        updateWindowProps(windowId, props);
+      }
+    },
+    [windowId, updateWindowProps],
+  );
+}
+
+/**
+ * Hook to update window title
+ */
+export function useUpdateWindowTitle() {
+  const windowId = useWindowId();
+  const updateWindowTitle = useWindowStore((s) => s.updateWindowTitle);
+
+  return useCallback(
+    (title: string) => {
+      if (windowId) {
+        updateWindowTitle(windowId, title);
+      }
+    },
+    [windowId, updateWindowTitle],
+  );
 }
 
 /**
