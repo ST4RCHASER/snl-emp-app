@@ -46,7 +46,7 @@ RUN pnpm --filter @snl-emp/api build
 # ============================================
 # Stage 3: Production image
 # ============================================
-FROM oven/bun:1-debian-slim AS runner
+FROM oven/bun:1-debian AS runner
 
 WORKDIR /app
 
