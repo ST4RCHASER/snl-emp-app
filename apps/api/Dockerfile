@@ -7,17 +7,14 @@ FROM oven/bun:1-debian AS deps
 
 WORKDIR /app
 
-# Install pnpm using bun
-RUN bun install -g pnpm@9
-
 # Copy workspace configuration files
-COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
+COPY package.json bun.lock* ./
 COPY apps/api/package.json ./apps/api/
 COPY packages/db/package.json ./packages/db/
 COPY packages/shared/package.json ./packages/shared/
 
 # Install dependencies
-RUN pnpm install --frozen-lockfile
+RUN bun install --frozen-lockfile
 
 # ============================================
 # Stage 2: Generate Prisma Client & Build
@@ -41,7 +38,7 @@ COPY apps/api ./apps/api
 COPY tsconfig.json ./
 
 # Build the API
-RUN pnpm --filter @snl-emp/api build
+RUN cd apps/api && bun build src/index.ts --outdir dist --target bun
 
 # ============================================
 # Stage 3: Production image

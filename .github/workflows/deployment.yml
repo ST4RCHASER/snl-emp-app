@@ -59,11 +59,9 @@ jobs:
         with:
           timeZone: UTC+7
           format: "YYYY-MM-DD-HH-mm-ss"
-      - uses: pnpm/action-setup@v2
-      - uses: actions/setup-node@v3
+      - uses: oven-sh/setup-bun@v2
         with:
-          cache: pnpm
-          node-version: "18"
+          bun-version: latest
 
       - name: Set branch prefix
         id: branch_prefix
@@ -80,14 +78,10 @@ jobs:
           if-file-not-found: error
 
       - name: Install Dependencies
-        run: pnpm install --frozen-lockfile
-        env:
-          NODE_ENV: development
+        run: bun install --frozen-lockfile
 
       - name: Build Client
-        run: pnpm build:web
-        env:
-          NODE_ENV: production
+        run: bun run build:web
 
       - name: Publish to Cloudflare Pages
         uses: cloudflare/pages-action@v1
