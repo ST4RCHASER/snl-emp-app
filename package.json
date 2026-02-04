@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "dotenv -- turbo dev",
     "build": "dotenv -- turbo build",
-    "build:web": "dotenv -- prisma generate --schema=prisma/schema.prisma && turbo build --filter=@snl-emp/web",
+    "build:web": "pnpm exec prisma generate --schema=prisma/schema.prisma && pnpm exec turbo build --filter=@snl-emp/web",
     "build:api": "dotenv -- turbo build --filter=@snl-emp/api",
     "dev:api": "dotenv -- turbo dev --filter=@snl-emp/api",
     "dev:web": "dotenv -- turbo dev --filter=@snl-emp/web",
