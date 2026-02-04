@@ -83,7 +83,7 @@ jobs:
         run: pnpm install
 
       - name: Build Client
-        run: pnpm build:client
+        run: pnpm build:web
 
       - name: Publish to Cloudflare Pages
         uses: cloudflare/pages-action@v1
