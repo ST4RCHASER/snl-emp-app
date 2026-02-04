@@ -3,12 +3,12 @@
 # ============================================
 # Stage 1: Install dependencies
 # ============================================
-FROM oven/bun:1 AS deps
+FROM oven/bun:1-debian AS deps
 
 WORKDIR /app
 
-# Install pnpm
-RUN npm install -g pnpm@9
+# Install pnpm using bun
+RUN bun install -g pnpm@9
 
 # Copy workspace configuration files
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
@@ -46,13 +46,13 @@ RUN pnpm --filter @snl-emp/api build
 # ============================================
 # Stage 3: Production image
 # ============================================
-FROM oven/bun:1-slim AS runner
+FROM oven/bun:1-debian-slim AS runner
 
 WORKDIR /app
 
 # Create non-root user for security
-RUN addgroup --system --gid 1001 nodejs && \
-    adduser --system --uid 1001 appuser
+RUN groupadd --system --gid 1001 nodejs && \
+    useradd --system --uid 1001 --gid nodejs appuser
 
 # Copy package files for module resolution
 COPY --from=builder /app/package.json ./
