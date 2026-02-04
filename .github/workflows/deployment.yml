@@ -49,7 +49,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - service: life-expo-client
+          - service: employee-client
 
     steps:
       - uses: actions/checkout@v3
