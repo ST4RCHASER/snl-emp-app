@@ -1,5 +1,5 @@
 import { Elysia, t } from "elysia";
-import { prisma, type LeaveStatus } from "@snl-emp/db";
+import { prisma, LeaveStatus } from "@snl-emp/db";
 import { authPlugin } from "../auth/plugin.js";
 import { canApproveLeaves } from "../middleware/rbac.js";
 
@@ -141,7 +141,9 @@ export const leaveRoutes = new Elysia({ prefix: "/api/leaves" })
       > = {};
 
       for (const leaveType of leaveTypes) {
-        const balance = balances.find((b) => b.leaveTypeId === leaveType.id);
+        const balance = balances.find(
+          (b: { leaveTypeId: string }) => b.leaveTypeId === leaveType.id,
+        );
         const totalBalance =
           (balance?.balance ?? leaveType.defaultBalance) +
           (balance?.carriedOver ?? 0) +
@@ -393,7 +395,7 @@ export const leaveRoutes = new Elysia({ prefix: "/api/leaves" })
       }
 
       const approval = leave.approvals.find(
-        (a) => a.approverId === employee.id,
+        (a: { approverId: string }) => a.approverId === employee.id,
       );
       if (!approval && user.role !== "DEVELOPER") {
         set.status = 403;
@@ -417,13 +419,13 @@ export const leaveRoutes = new Elysia({ prefix: "/api/leaves" })
       });
 
       const allResponded = updatedLeave?.approvals.every(
-        (a) => a.approved !== null,
+        (a: { approved: boolean | null }) => a.approved !== null,
       );
       const anyRejected = updatedLeave?.approvals.some(
-        (a) => a.approved === false,
+        (a: { approved: boolean | null }) => a.approved === false,
       );
       const allApproved = updatedLeave?.approvals.every(
-        (a) => a.approved === true,
+        (a: { approved: boolean | null }) => a.approved === true,
       );
 
       let newStatus: LeaveStatus = "PENDING";

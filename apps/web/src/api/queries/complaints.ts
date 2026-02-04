@@ -19,6 +19,16 @@ export interface ComplaintMessage {
   createdAt: string;
 }
 
+export interface ComplaintDetail {
+  id: string;
+  subject: string;
+  description: string;
+  status: ComplaintStatus;
+  messages: ComplaintMessage[];
+  createdAt: string;
+  updatedAt: string;
+}
+
 export const complaintQueries = {
   all: (view?: string, status?: string) =>
     queryOptions({
@@ -38,7 +48,10 @@ export const complaintQueries = {
       queryFn: async () => {
         const { data, error } = await api.api.complaints({ id }).get();
         if (error) throw error;
-        return data;
+        if (!data || typeof data !== "object" || !("id" in data)) {
+          throw new Error("Invalid complaint data");
+        }
+        return data as unknown as ComplaintDetail;
       },
     }),
 };

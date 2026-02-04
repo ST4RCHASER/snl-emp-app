@@ -315,7 +315,9 @@ export default function EmployeeDirectory() {
   // Update selected managers when currentManagers data loads
   useEffect(() => {
     if (currentManagers && Array.isArray(currentManagers)) {
-      setSelectedManagers(currentManagers.map((m: { id: string }) => m.id));
+      setSelectedManagers(
+        (currentManagers as Array<{ id: string }>).map((m) => m.id),
+      );
     }
   }, [currentManagers]);
 

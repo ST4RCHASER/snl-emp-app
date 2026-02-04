@@ -189,14 +189,13 @@ function ComplaintChatView({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Update status form when complaint loads and clear local state
-  const complaintDataKey =
-    complaint && "id" in complaint
-      ? `${complaint.id}-${(complaint as unknown as { messages?: ComplaintMessage[] }).messages?.length || 0}`
-      : null;
+  const complaintDataKey = complaint
+    ? `${complaint.id}-${complaint.messages?.length || 0}`
+    : null;
 
   useEffect(() => {
-    if (complaint && "status" in complaint) {
-      setStatusForm(complaint.status as ComplaintStatus);
+    if (complaint) {
+      setStatusForm(complaint.status);
       setLocalStatus(null);
       setLocalMessages([]);
     }
@@ -345,7 +344,7 @@ function ComplaintChatView({
   };
 
   const handleUpdateStatus = async () => {
-    if (!complaint || !("id" in complaint)) return;
+    if (!complaint) return;
     await updateStatus.mutateAsync({
       id: complaint.id,
       status: statusForm,
@@ -368,7 +367,7 @@ function ComplaintChatView({
     );
   }
 
-  if (!complaint || !("id" in complaint)) {
+  if (!complaint) {
     return (
       <div style={{ textAlign: "center", padding: 40 }}>
         Complaint not found
@@ -376,18 +375,12 @@ function ComplaintChatView({
     );
   }
 
-  const serverMessages = (
-    (
-      complaint as {
-        messages?: Array<
-          Omit<ComplaintMessage, "createdAt"> & { createdAt: Date | string }
-        >;
-      }
-    ).messages || []
-  ).map((m) => ({
+  const serverMessages = (complaint.messages || []).map((m) => ({
     ...m,
     createdAt:
-      typeof m.createdAt === "string" ? m.createdAt : m.createdAt.toISOString(),
+      typeof m.createdAt === "string"
+        ? m.createdAt
+        : (m.createdAt as unknown as Date).toISOString(),
   })) as ComplaintMessage[];
   const allMessages = [
     ...serverMessages,
@@ -398,7 +391,7 @@ function ComplaintChatView({
     (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
   );
 
-  const currentStatus = localStatus || (complaint.status as ComplaintStatus);
+  const currentStatus = localStatus || complaint.status;
 
   const getStatusBadge = (status: string) => {
     const colorMap: Record<string, "informative" | "warning" | "success"> = {

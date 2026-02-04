@@ -103,7 +103,11 @@ export default function Announcements() {
     setViewMode("list");
     setForm({ title: "", content: "", isActive: true });
     // Select the newly created announcement
-    if (newAnnouncement && "id" in newAnnouncement) {
+    if (
+      newAnnouncement &&
+      typeof newAnnouncement === "object" &&
+      "id" in newAnnouncement
+    ) {
       setSelectedAnnouncement(newAnnouncement as unknown as Announcement);
     }
   };
@@ -120,7 +124,11 @@ export default function Announcements() {
     setEditingAnnouncement(null);
     setForm({ title: "", content: "", isActive: true });
     // Update selected announcement with new data
-    if (updatedAnnouncement && "id" in updatedAnnouncement) {
+    if (
+      updatedAnnouncement &&
+      typeof updatedAnnouncement === "object" &&
+      "id" in updatedAnnouncement
+    ) {
       setSelectedAnnouncement(updatedAnnouncement as unknown as Announcement);
     }
   };

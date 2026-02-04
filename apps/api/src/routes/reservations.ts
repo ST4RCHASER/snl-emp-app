@@ -67,22 +67,44 @@ export const reservationRoutes = new Elysia({ prefix: "/api/reservations" })
         orderBy: [{ fullName: "asc" }, { user: { name: "asc" } }],
       });
 
-      return resources.map((emp) => ({
-        id: emp.id,
-        employeeId: emp.employeeId,
-        name: emp.fullName || emp.user.name || emp.user.email,
-        avatar: emp.avatar || emp.user.image,
-        department: emp.department,
-        position: emp.position,
-        managers: emp.managementLeads.map((ml) => ({
-          id: ml.manager.id,
-          name:
-            ml.manager.fullName ||
-            ml.manager.user.name ||
-            ml.manager.user.email,
-          avatar: ml.manager.avatar || ml.manager.user.image,
-        })),
-      }));
+      return resources.map(
+        (emp: {
+          id: string;
+          employeeId: string;
+          fullName: string | null;
+          avatar: string | null;
+          department: string | null;
+          position: string | null;
+          user: { name: string | null; email: string; image: string | null };
+          managementLeads: Array<{
+            manager: {
+              id: string;
+              fullName: string | null;
+              avatar: string | null;
+              user: {
+                name: string | null;
+                email: string;
+                image: string | null;
+              };
+            };
+          }>;
+        }) => ({
+          id: emp.id,
+          employeeId: emp.employeeId,
+          name: emp.fullName || emp.user.name || emp.user.email,
+          avatar: emp.avatar || emp.user.image,
+          department: emp.department,
+          position: emp.position,
+          managers: emp.managementLeads.map((ml) => ({
+            id: ml.manager.id,
+            name:
+              ml.manager.fullName ||
+              ml.manager.user.name ||
+              ml.manager.user.email,
+            avatar: ml.manager.avatar || ml.manager.user.image,
+          })),
+        }),
+      );
     },
     {
       detail: {

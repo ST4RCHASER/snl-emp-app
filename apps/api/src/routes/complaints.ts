@@ -230,6 +230,10 @@ export const complaintRoutes = new Elysia({ prefix: "/api/complaints" })
           isFromHR: boolean;
           userId: string;
           createdAt: Date;
+          attachmentUrl: string | null;
+          attachmentName: string | null;
+          attachmentType: string | null;
+          attachmentSize: number | null;
         }) => {
           const isSelf = msg.userId === user.id;
           let senderName: string;

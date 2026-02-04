@@ -133,7 +133,7 @@ export const workLogRoutes = new Elysia({ prefix: "/api/worklogs" })
 
       // Aggregate by date
       const summary: Record<string, number> = {};
-      logs.forEach((log) => {
+      logs.forEach((log: { date: Date; hours: number }) => {
         const dateKey = log.date.toISOString().split("T")[0];
         summary[dateKey] = (summary[dateKey] || 0) + log.hours;
       });
@@ -447,7 +447,7 @@ export const workLogRoutes = new Elysia({ prefix: "/api/worklogs" })
         },
       });
 
-      return managedEmployees.map((m) => m.employee);
+      return managedEmployees.map((m: { employee: unknown }) => m.employee);
     },
     {
       detail: {
@@ -556,13 +556,15 @@ export const workLogRoutes = new Elysia({ prefix: "/api/worklogs" })
         const allEmployees = await prisma.employee.findMany({
           select: { id: true },
         });
-        employeeIds = allEmployees.map((e) => e.id);
+        employeeIds = allEmployees.map((e: { id: string }) => e.id);
       } else {
         const managedEmployees = await prisma.employeeManagement.findMany({
           where: { managerId: manager.id },
           select: { employeeId: true },
         });
-        employeeIds = managedEmployees.map((m) => m.employeeId);
+        employeeIds = managedEmployees.map(
+          (m: { employeeId: string }) => m.employeeId,
+        );
       }
 
       const startDate = query.startDate
@@ -589,7 +591,7 @@ export const workLogRoutes = new Elysia({ prefix: "/api/worklogs" })
 
       // Aggregate by employee and date
       const summary: Record<string, Record<string, number>> = {};
-      logs.forEach((log) => {
+      logs.forEach((log: { employeeId: string; date: Date; hours: number }) => {
         const dateKey = log.date.toISOString().split("T")[0];
         if (!summary[log.employeeId]) {
           summary[log.employeeId] = {};

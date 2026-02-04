@@ -1,12 +1,11 @@
 import { Elysia, t } from "elysia";
-import {
-  prisma,
-  LeaveTypeConfig,
-  EmployeeLeaveBalance,
-  LeaveRequest,
-} from "@snl-emp/db";
+import { prisma, Prisma } from "@snl-emp/db";
 import { authPlugin } from "../auth/plugin.js";
 import { canManageEmployees, isDeveloper } from "../middleware/rbac.js";
+
+type LeaveTypeConfig = Prisma.LeaveTypeConfigGetPayload<object>;
+type EmployeeLeaveBalance = Prisma.EmployeeLeaveBalanceGetPayload<object>;
+type LeaveRequest = Prisma.LeaveRequestGetPayload<object>;
 
 type LeaveRequestWithConfig = LeaveRequest & {
   leaveTypeConfig: LeaveTypeConfig | null;
