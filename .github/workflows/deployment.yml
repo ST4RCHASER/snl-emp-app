@@ -11,6 +11,11 @@ on:
         required: false
         default: false
         type: boolean
+      forceDeployClient:
+        description: "Force deploy client"
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   verify-files:
@@ -32,6 +37,63 @@ jobs:
         id: server-changed-files
         with:
           files: apps/api/**
+
+  deploy-client:
+    needs: verify-files
+    if: needs.verify-files.outputs.client_files_changed == 'true' ||
+      github.event.inputs.forceDeployClient == 'true'
+    name: Deploy Client
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: life-expo-client
+
+    steps:
+      - uses: actions/checkout@v3
+      - name: Setting Up
+        id: time
+        uses: nanzm/get-time-action@master
+        with:
+          timeZone: UTC+7
+          format: "YYYY-MM-DD-HH-mm-ss"
+      - uses: pnpm/action-setup@v2
+      - uses: actions/setup-node@v3
+        with:
+          cache: pnpm
+          node-version: "18"
+
+      - name: Set branch prefix
+        id: branch_prefix
+        run: echo "prefix=$(echo '${{ github.ref_name }}' | tr '[:lower:]' '[:upper:]')" >> $GITHUB_OUTPUT
+
+      - name: Create .env file (${{steps.branch_prefix.outputs.prefix}})
+        run: sudo touch .env && sudo chown runner:docker .env && echo "GIT_HASH=${{ github.sha }}" >> .env && echo "GIT_BRANCH=${{github.ref_name}}" >> .env && echo "GIT_BUILD_TIME=${{ steps.time.outputs.time }}" >> .env && echo '${{ secrets[format('{0}_ENV_KEY', steps.branch_prefix.outputs.prefix)] }}' >> .env
+
+      - name: Load .env File
+        uses: aarcangeli/load-dotenv@v1.0.0
+        with:
+          filenames: .env
+          quiet: true
+          if-file-not-found: error
+
+      - name: Install Dependencies
+        run: pnpm install
+
+      - name: Build Client
+        run: pnpm build:client
+
+      - name: Publish to Cloudflare Pages
+        uses: cloudflare/pages-action@v1
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_DEPLOYMENT_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_DEPLOYMENT_ACCOUNT_ID }}
+          projectName: ${{ secrets.GCP_DEPLOYMENT_PROJECT_ID }}-${{ matrix.service }}
+          directory: apps/web/dist
+          workingDirectory: .
+          wranglerVersion: "3"
 
   deploy-server:
     name: Deploy Server
