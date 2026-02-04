@@ -78,6 +78,9 @@ COPY --from=builder /app/packages/shared/package.json ./packages/shared/
 COPY --from=builder /app/packages/db/src ./packages/db/src
 COPY --from=builder /app/packages/db/package.json ./packages/db/
 
+# Copy .env file for runtime (if exists)
+COPY --from=builder /app/.env* ./
+
 # Set ownership
 RUN chown -R appuser:nodejs /app
 
