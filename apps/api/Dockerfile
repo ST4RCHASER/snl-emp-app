@@ -26,19 +26,19 @@ FROM deps AS builder
 
 WORKDIR /app
 
+# Copy .env first (needed for Prisma generate)
+# The wildcard ensures this doesn't fail if no .env files exist
+COPY .env* ./
+
 # Copy Prisma schema and generate client
 COPY prisma ./prisma
-RUN pnpm --filter @snl-emp/db exec prisma generate --schema=./prisma/schema.prisma
+RUN bunx prisma generate --schema=./prisma/schema.prisma
 
 # Copy source code
 COPY packages/db ./packages/db
 COPY packages/shared ./packages/shared
 COPY apps/api ./apps/api
 COPY tsconfig.json ./
-
-# Copy .env if exists (for build-time env vars from CI)
-# The wildcard ensures this doesn't fail if no .env files exist
-COPY .env* ./
 
 # Build the API
 RUN pnpm --filter @snl-emp/api build
