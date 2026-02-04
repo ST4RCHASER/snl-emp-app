@@ -7,8 +7,8 @@ FROM oven/bun:1-debian AS deps
 
 WORKDIR /app
 
-# Install pnpm
-RUN npm install -g pnpm@9
+# Install pnpm using bun
+RUN bun add -g pnpm@9
 
 # Copy workspace configuration files
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
