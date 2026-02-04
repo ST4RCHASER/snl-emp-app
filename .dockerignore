@@ -1,0 +1,49 @@
+# Dependencies (will be installed in Docker)
+node_modules
+**/node_modules
+
+# Build outputs
+dist
+**/dist
+.turbo
+**/.turbo
+
+# Development files
+*.log
+
+# Note: .env files are NOT ignored because they are needed during build
+# for Prisma client generation. They are created by the CI workflow.
+# The final image does not include .env - environment variables should
+# be passed at runtime via docker run -e or Kubernetes secrets.
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Git
+.git
+.gitignore
+
+# Tests
+coverage
+**/coverage
+*.test.ts
+*.spec.ts
+**/__tests__
+
+# Documentation
+README.md
+CHANGELOG.md
+docs
+
+# Frontend (not needed for API build)
+apps/web
+
+# Generated Prisma client (will be regenerated in Docker)
+packages/db/src/generated
