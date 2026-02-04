@@ -86,7 +86,7 @@ export const auth = betterAuth({
   advanced: {
     defaultCookieAttributes: {
       sameSite: "lax",
-      secure: false, // Set to true in production with HTTPS
+      secure: process.env.NODE_ENV === "production",
     },
   },
 

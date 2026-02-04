@@ -1,12 +1,28 @@
 import { Elysia } from "elysia";
 import { auth, type Session, type User } from "./index.js";
 
-export const betterAuthView = new Elysia({ name: "better-auth-view" }).all(
-  "/api/auth/*",
-  async ({ request }) => {
-    return auth.handler(request);
-  },
-);
+const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
+
+export const betterAuthView = new Elysia({ name: "better-auth-view" })
+  // Handle OPTIONS preflight requests for auth routes
+  .options("/api/auth/*", ({ set }) => {
+    set.headers["Access-Control-Allow-Origin"] = FRONTEND_URL;
+    set.headers["Access-Control-Allow-Methods"] =
+      "GET, POST, PUT, DELETE, PATCH, OPTIONS";
+    set.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization";
+    set.headers["Access-Control-Allow-Credentials"] = "true";
+    set.status = 204;
+    return "";
+  })
+  .all("/api/auth/*", async ({ request, set }) => {
+    const response = await auth.handler(request);
+
+    // Copy CORS headers to the response
+    set.headers["Access-Control-Allow-Origin"] = FRONTEND_URL;
+    set.headers["Access-Control-Allow-Credentials"] = "true";
+
+    return response;
+  });
 
 export const authPlugin = new Elysia({ name: "auth-plugin" })
   .use(betterAuthView)
