@@ -78,8 +78,9 @@ COPY --from=builder /app/packages/shared/package.json ./packages/shared/
 COPY --from=builder /app/packages/db/src ./packages/db/src
 COPY --from=builder /app/packages/db/package.json ./packages/db/
 
-# Copy .env file for runtime (if exists)
+# Copy .env file for runtime (if exists) - copy to both /app and /app/apps/api
 COPY --from=builder /app/.env* ./
+COPY --from=builder /app/.env* ./apps/api/
 
 # Set ownership
 RUN chown -R appuser:nodejs /app
@@ -100,4 +101,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 
 # Start the application from the correct directory
 WORKDIR /app/apps/api
-CMD ["bun", "run", "dist/index.js"]
+CMD ["bun", "run", "--env-file", ".env", "dist/index.js"]
