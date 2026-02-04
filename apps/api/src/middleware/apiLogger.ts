@@ -72,7 +72,7 @@ export function logApiRequest(
         userAgent: request.headers.get("user-agent") || undefined,
       },
     })
-    .catch((err) => {
+    .catch((err: unknown) => {
       console.error("[API Logger] Failed to log:", err);
     });
 }

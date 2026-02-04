@@ -60,7 +60,11 @@ export const auditRoutes = new Elysia({ prefix: "/api/audit" })
 
       // Get user details for logs
       const userIds = [
-        ...new Set(logs.map((log) => log.userId).filter(Boolean)),
+        ...new Set(
+          logs
+            .map((log: { userId: string | null }) => log.userId)
+            .filter(Boolean),
+        ),
       ] as string[];
       const users =
         userIds.length > 0
@@ -70,9 +74,9 @@ export const auditRoutes = new Elysia({ prefix: "/api/audit" })
             })
           : [];
 
-      const userMap = new Map(users.map((u) => [u.id, u]));
+      const userMap = new Map(users.map((u: { id: string }) => [u.id, u]));
 
-      const logsWithUser = logs.map((log) => ({
+      const logsWithUser = logs.map((log: { userId: string | null }) => ({
         ...log,
         user: log.userId ? userMap.get(log.userId) || null : null,
       }));
@@ -162,7 +166,11 @@ export const auditRoutes = new Elysia({ prefix: "/api/audit" })
 
       // Get user details for logs
       const userIds = [
-        ...new Set(logs.map((log) => log.userId).filter(Boolean)),
+        ...new Set(
+          logs
+            .map((log: { userId: string | null }) => log.userId)
+            .filter(Boolean),
+        ),
       ] as string[];
       const users =
         userIds.length > 0
@@ -172,9 +180,9 @@ export const auditRoutes = new Elysia({ prefix: "/api/audit" })
             })
           : [];
 
-      const userMap = new Map(users.map((u) => [u.id, u]));
+      const userMap = new Map(users.map((u: { id: string }) => [u.id, u]));
 
-      const logsWithUser = logs.map((log) => ({
+      const logsWithUser = logs.map((log: { userId: string | null }) => ({
         ...log,
         user: log.userId ? userMap.get(log.userId) || null : null,
       }));
@@ -305,14 +313,18 @@ export const auditRoutes = new Elysia({ prefix: "/api/audit" })
         actionsThisWeek,
         apiLogsThisWeek,
         errorCount,
-        topActions: topActions.map((a) => ({
-          action: a.action,
-          count: a._count.action,
-        })),
-        topEndpoints: topEndpoints.map((e) => ({
-          path: e.path,
-          count: e._count.path,
-        })),
+        topActions: topActions.map(
+          (a: { action: string; _count: { action: number } }) => ({
+            action: a.action,
+            count: a._count.action,
+          }),
+        ),
+        topEndpoints: topEndpoints.map(
+          (e: { path: string; _count: { path: number } }) => ({
+            path: e.path,
+            count: e._count.path,
+          }),
+        ),
       };
     },
     {

@@ -25,23 +25,30 @@ export const announcementRoutes = new Elysia({ prefix: "/api/announcements" })
       const readReceipts = await prisma.announcementRead.findMany({
         where: {
           userId: user.id,
-          announcementId: { in: announcements.map((a) => a.id) },
+          announcementId: {
+            in: announcements.map((a: { id: string }) => a.id),
+          },
         },
       });
 
       const readMap = new Map(
-        readReceipts.map((r) => [r.announcementId, r.readAt]),
+        readReceipts.map((r: { announcementId: string; readAt: Date }) => [
+          r.announcementId,
+          r.readAt,
+        ]),
       );
 
       // Add isRead flag to each announcement
-      const announcementsWithReadStatus = announcements.map((announcement) => {
-        const readAt = readMap.get(announcement.id);
-        const isRead = readAt ? readAt >= announcement.updatedAt : false;
-        return {
-          ...announcement,
-          isRead,
-        };
-      });
+      const announcementsWithReadStatus = announcements.map(
+        (announcement: { id: string; updatedAt: Date }) => {
+          const readAt = readMap.get(announcement.id);
+          const isRead = readAt ? readAt >= announcement.updatedAt : false;
+          return {
+            ...announcement,
+            isRead,
+          };
+        },
+      );
 
       return announcementsWithReadStatus;
     },
@@ -76,12 +83,17 @@ export const announcementRoutes = new Elysia({ prefix: "/api/announcements" })
       const readReceipts = await prisma.announcementRead.findMany({
         where: {
           userId: user.id,
-          announcementId: { in: announcements.map((a) => a.id) },
+          announcementId: {
+            in: announcements.map((a: { id: string }) => a.id),
+          },
         },
       });
 
       const readMap = new Map(
-        readReceipts.map((r) => [r.announcementId, r.readAt]),
+        readReceipts.map((r: { announcementId: string; readAt: Date }) => [
+          r.announcementId,
+          r.readAt,
+        ]),
       );
 
       // Check for unread or updated announcements
@@ -170,7 +182,7 @@ export const announcementRoutes = new Elysia({ prefix: "/api/announcements" })
 
       // Create read receipts for all announcements
       await Promise.all(
-        announcements.map((announcement) =>
+        announcements.map((announcement: { id: string }) =>
           prisma.announcementRead.upsert({
             where: {
               announcementId_userId: {

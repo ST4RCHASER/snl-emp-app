@@ -312,7 +312,9 @@ export const employeeRoutes = new Elysia({ prefix: "/api/employees" })
         return { message: "Employee not found" };
       }
 
-      return employee.managementLeads.map((ml) => ml.manager);
+      return employee.managementLeads.map(
+        (ml: { manager: unknown }) => ml.manager,
+      );
     },
     {
       params: t.Object({

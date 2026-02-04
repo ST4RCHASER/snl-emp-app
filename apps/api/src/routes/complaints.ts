@@ -207,7 +207,9 @@ export const complaintRoutes = new Elysia({ prefix: "/api/complaints" })
 
       // Collect unique user IDs from messages
       const uniqueUserIds = new Set<string>();
-      complaint.messages.forEach((msg) => uniqueUserIds.add(msg.userId));
+      complaint.messages.forEach((msg: { userId: string }) =>
+        uniqueUserIds.add(msg.userId),
+      );
       uniqueUserIds.add(complaint.employee.userId);
 
       // Assign anonymous names
@@ -221,39 +223,47 @@ export const complaintRoutes = new Elysia({ prefix: "/api/complaints" })
       });
 
       // Transform messages with anonymized sender info
-      const messagesWithSender = complaint.messages.map((msg) => {
-        const isSelf = msg.userId === user.id;
-        let senderName: string;
+      const messagesWithSender = complaint.messages.map(
+        (msg: {
+          id: string;
+          content: string;
+          isFromHR: boolean;
+          userId: string;
+          createdAt: Date;
+        }) => {
+          const isSelf = msg.userId === user.id;
+          let senderName: string;
 
-        if (isSelf) {
-          senderName = "You";
-        } else if (isHR) {
-          if (msg.userId === complaint.employee.userId) {
-            senderName = "Anonymous Employee";
-          } else {
-            senderName = userIdToAnonName.get(msg.userId) || "HR Staff";
-          }
-        } else {
-          if (msg.isFromHR) {
-            senderName = "HR Staff";
-          } else {
+          if (isSelf) {
             senderName = "You";
+          } else if (isHR) {
+            if (msg.userId === complaint.employee.userId) {
+              senderName = "Anonymous Employee";
+            } else {
+              senderName = userIdToAnonName.get(msg.userId) || "HR Staff";
+            }
+          } else {
+            if (msg.isFromHR) {
+              senderName = "HR Staff";
+            } else {
+              senderName = "You";
+            }
           }
-        }
 
-        return {
-          id: msg.id,
-          content: msg.content,
-          isFromHR: msg.isFromHR,
-          isSelf,
-          senderName,
-          attachmentUrl: msg.attachmentUrl,
-          attachmentName: msg.attachmentName,
-          attachmentType: msg.attachmentType,
-          attachmentSize: msg.attachmentSize,
-          createdAt: msg.createdAt,
-        };
-      });
+          return {
+            id: msg.id,
+            content: msg.content,
+            isFromHR: msg.isFromHR,
+            isSelf,
+            senderName,
+            attachmentUrl: msg.attachmentUrl,
+            attachmentName: msg.attachmentName,
+            attachmentType: msg.attachmentType,
+            attachmentSize: msg.attachmentSize,
+            createdAt: msg.createdAt,
+          };
+        },
+      );
 
       return {
         ...complaint,
