@@ -90,7 +90,7 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_DEPLOYMENT_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_DEPLOYMENT_ACCOUNT_ID }}
-          projectName: ${{ secrets.GCP_DEPLOYMENT_PROJECT_ID }}-${{ matrix.service }}
+          projectName: ${{ matrix.service }}
           directory: apps/web/dist
           workingDirectory: .
           wranglerVersion: "3"
