@@ -1,7 +1,10 @@
 import type { Session } from "../auth/index.js";
 import { hasRole, type Role } from "@snl-emp/shared";
 
-export function requireRoles(user: Session["user"] | null, roles: Role[]): boolean {
+export function requireRoles(
+  user: Session["user"] | null,
+  roles: Role[],
+): boolean {
   if (!user) return false;
   const userRole = (user.role as Role) || "EMPLOYEE";
   return hasRole(userRole, roles);
@@ -27,7 +30,7 @@ export function canManageEmployees(user: Session["user"] | null): boolean {
 }
 
 export function canApproveLeaves(user: Session["user"] | null): boolean {
-  return isManagement(user);
+  return isManagement(user) || isHR(user);
 }
 
 export function canManageComplaints(user: Session["user"] | null): boolean {

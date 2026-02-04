@@ -237,6 +237,67 @@ export const reservationRoutes = new Elysia({ prefix: "/api/reservations" })
     },
   )
 
+  // Get reservations where I am the resource (my time being reserved by others)
+  .get(
+    "/my-time",
+    async ({ user, set, query }) => {
+      if (!user) {
+        set.status = 401;
+        return { message: "Unauthorized" };
+      }
+
+      const employee = await getOrCreateEmployee(user.id);
+
+      const startDate = query.startDate ? new Date(query.startDate) : undefined;
+      const endDate = query.endDate ? new Date(query.endDate) : undefined;
+
+      const reservations = await prisma.resourceReservation.findMany({
+        where: {
+          resourceEmployeeId: employee.id,
+          status: "APPROVED",
+          ...(startDate &&
+            endDate && {
+              date: {
+                gte: startDate,
+                lte: endDate,
+              },
+            }),
+          ...(startDate &&
+            !endDate && {
+              date: {
+                gte: startDate,
+              },
+            }),
+        },
+        include: {
+          resourceOwner: {
+            include: {
+              user: { select: { name: true, email: true, image: true } },
+            },
+          },
+          requester: {
+            include: {
+              user: { select: { name: true, email: true, image: true } },
+            },
+          },
+        },
+        orderBy: { date: "asc" },
+      });
+
+      return reservations;
+    },
+    {
+      query: t.Object({
+        startDate: t.Optional(t.String()),
+        endDate: t.Optional(t.String()),
+      }),
+      detail: {
+        tags: ["Reservations"],
+        summary: "Get reservations where I am the resource",
+      },
+    },
+  )
+
   // Get my requests (as requester)
   .get(
     "/my-requests",
@@ -327,39 +388,14 @@ export const reservationRoutes = new Elysia({ prefix: "/api/reservations" })
         return { message: "Cannot reserve your own team member" };
       }
 
-      // Get work hours setting
+      // Get settings
       const settings = await prisma.globalSettings.findUnique({
         where: { id: "global" },
       });
-      const maxHours = settings?.workHoursPerDay ?? 8;
+      const requiresApproval = settings?.reservationRequiresApproval ?? true;
 
-      if (body.hours > maxHours) {
-        set.status = 400;
-        return {
-          message: `Cannot reserve more than ${maxHours} hours per day`,
-        };
-      }
-
-      // Check existing reservations for this date
-      const existingReservations = await prisma.resourceReservation.findMany({
-        where: {
-          resourceEmployeeId: body.resourceEmployeeId,
-          date: new Date(body.date),
-          status: { in: ["PENDING", "APPROVED"] },
-        },
-      });
-
-      const totalReservedHours = existingReservations.reduce(
-        (sum: number, r: { hours: number }) => sum + r.hours,
-        0,
-      );
-
-      if (totalReservedHours + body.hours > maxHours) {
-        set.status = 400;
-        return {
-          message: `Not enough hours available. ${maxHours - totalReservedHours} hours remaining for this date.`,
-        };
-      }
+      // Auto-approve if approval is not required
+      const initialStatus = requiresApproval ? "PENDING" : "APPROVED";
 
       const reservation = await prisma.resourceReservation.create({
         data: {
@@ -370,6 +406,8 @@ export const reservationRoutes = new Elysia({ prefix: "/api/reservations" })
           hours: body.hours,
           title: body.title,
           description: body.description,
+          status: initialStatus,
+          ...(initialStatus === "APPROVED" && { respondedAt: new Date() }),
         },
         include: {
           resourceEmployee: {
@@ -403,6 +441,85 @@ export const reservationRoutes = new Elysia({ prefix: "/api/reservations" })
       detail: {
         tags: ["Reservations"],
         summary: "Create a reservation request",
+      },
+    },
+  )
+
+  // Update a reservation (requester or resource owner can edit anytime)
+  .put(
+    "/:id",
+    async ({ params: { id }, body, user, set }) => {
+      if (!user) {
+        set.status = 401;
+        return { message: "Unauthorized" };
+      }
+
+      const employee = await getOrCreateEmployee(user.id);
+
+      const reservation = await prisma.resourceReservation.findUnique({
+        where: { id },
+        include: {
+          resourceEmployee: true,
+        },
+      });
+
+      if (!reservation) {
+        set.status = 404;
+        return { message: "Reservation not found" };
+      }
+
+      const isRequester = reservation.requesterId === employee.id;
+      const isResourceOwner = reservation.resourceEmployeeId === employee.id;
+
+      // Only requester or resource owner can edit
+      if (!isRequester && !isResourceOwner && !isDeveloper(user)) {
+        set.status = 403;
+        return {
+          message:
+            "Only the requester or resource owner can edit this reservation",
+        };
+      }
+
+      const updatedReservation = await prisma.resourceReservation.update({
+        where: { id },
+        data: {
+          hours: body.hours,
+          title: body.title,
+          description: body.description,
+        },
+        include: {
+          resourceEmployee: {
+            include: {
+              user: { select: { name: true, email: true, image: true } },
+            },
+          },
+          resourceOwner: {
+            include: {
+              user: { select: { name: true, email: true, image: true } },
+            },
+          },
+          requester: {
+            include: {
+              user: { select: { name: true, email: true, image: true } },
+            },
+          },
+        },
+      });
+
+      return updatedReservation;
+    },
+    {
+      params: t.Object({
+        id: t.String(),
+      }),
+      body: t.Object({
+        hours: t.Number({ minimum: 0.5, maximum: 24 }),
+        title: t.String({ minLength: 1, maxLength: 200 }),
+        description: t.Optional(t.String({ maxLength: 1000 })),
+      }),
+      detail: {
+        tags: ["Reservations"],
+        summary: "Update a reservation (requester only)",
       },
     },
   )

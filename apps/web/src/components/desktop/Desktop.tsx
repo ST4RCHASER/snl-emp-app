@@ -26,6 +26,9 @@ import {
   CalendarWidget,
   ClockWidget,
   MeetingRoomWidget,
+  WorkLogWidget,
+  LeaveWidget,
+  ReserveTimeWidget,
 } from "./widgets";
 import {
   preferencesQueries,
@@ -747,6 +750,36 @@ export function Desktop() {
     saveWidgets([...widgets, newWidget]);
   }, [addWidget, contextMenu, saveWidgets, widgets]);
 
+  const handleAddWorkLog = useCallback(() => {
+    const newWidget = {
+      id: generateWidgetId(),
+      type: "worklog" as const,
+      position: { x: contextMenu?.x || 100, y: contextMenu?.y || 100 },
+    };
+    addWidget(newWidget);
+    saveWidgets([...widgets, newWidget]);
+  }, [addWidget, contextMenu, saveWidgets, widgets]);
+
+  const handleAddLeave = useCallback(() => {
+    const newWidget = {
+      id: generateWidgetId(),
+      type: "leave" as const,
+      position: { x: contextMenu?.x || 100, y: contextMenu?.y || 100 },
+    };
+    addWidget(newWidget);
+    saveWidgets([...widgets, newWidget]);
+  }, [addWidget, contextMenu, saveWidgets, widgets]);
+
+  const handleAddReserveTime = useCallback(() => {
+    const newWidget = {
+      id: generateWidgetId(),
+      type: "reserve-time" as const,
+      position: { x: contextMenu?.x || 100, y: contextMenu?.y || 100 },
+    };
+    addWidget(newWidget);
+    saveWidgets([...widgets, newWidget]);
+  }, [addWidget, contextMenu, saveWidgets, widgets]);
+
   const handleWidgetUpdate = useCallback(
     (id: string, updates: Partial<Widget>) => {
       updateWidget(id, updates);
@@ -1114,6 +1147,39 @@ export function Desktop() {
             />
           );
         }
+        if (widget.type === "worklog") {
+          return (
+            <WorkLogWidget
+              key={widget.id}
+              widget={widget}
+              onUpdate={(updates) => handleWidgetUpdate(widget.id, updates)}
+              onRemove={() => handleWidgetRemove(widget.id)}
+              onDragEnd={(pos) => handleWidgetDragEnd(widget.id, pos)}
+            />
+          );
+        }
+        if (widget.type === "leave") {
+          return (
+            <LeaveWidget
+              key={widget.id}
+              widget={widget}
+              onUpdate={(updates) => handleWidgetUpdate(widget.id, updates)}
+              onRemove={() => handleWidgetRemove(widget.id)}
+              onDragEnd={(pos) => handleWidgetDragEnd(widget.id, pos)}
+            />
+          );
+        }
+        if (widget.type === "reserve-time") {
+          return (
+            <ReserveTimeWidget
+              key={widget.id}
+              widget={widget}
+              onUpdate={(updates) => handleWidgetUpdate(widget.id, updates)}
+              onRemove={() => handleWidgetRemove(widget.id)}
+              onDragEnd={(pos) => handleWidgetDragEnd(widget.id, pos)}
+            />
+          );
+        }
         return null;
       })}
 
@@ -1128,6 +1194,9 @@ export function Desktop() {
           onAddCalendar={handleAddCalendar}
           onAddClock={handleAddClock}
           onAddMeetingRoom={handleAddMeetingRoom}
+          onAddWorkLog={handleAddWorkLog}
+          onAddLeave={handleAddLeave}
+          onAddReserveTime={handleAddReserveTime}
         />
       )}
 

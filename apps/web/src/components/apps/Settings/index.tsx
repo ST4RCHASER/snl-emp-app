@@ -25,6 +25,7 @@ import {
   ScaleFit24Regular,
   Clock24Regular,
   ChatWarning24Regular,
+  CalendarAgenda24Regular,
 } from "@fluentui/react-icons";
 import { settingsQueries, useUpdateSettings } from "@/api/queries/settings";
 import {
@@ -51,6 +52,7 @@ type MenuSection =
   | "wallpaper"
   | "display"
   | "work-policy"
+  | "reservations"
   | "complaints";
 
 interface MenuItem {
@@ -68,6 +70,12 @@ const MENU_ITEMS: MenuItem[] = [
     id: "work-policy",
     label: "Work Hours",
     icon: <Clock24Regular />,
+    hrOnly: true,
+  },
+  {
+    id: "reservations",
+    label: "Reservations",
+    icon: <CalendarAgenda24Regular />,
     hrOnly: true,
   },
   {
@@ -176,6 +184,7 @@ export default function Settings() {
   const [form, setForm] = useState({
     workHoursPerDay: 8,
     complaintChatEnabled: true,
+    reservationRequiresApproval: true,
   });
 
   const [appearance, setAppearance] = useState({
@@ -195,10 +204,12 @@ export default function Settings() {
       const s = settings as {
         workHoursPerDay?: number;
         complaintChatEnabled?: boolean;
+        reservationRequiresApproval?: boolean;
       };
       setForm({
         workHoursPerDay: s.workHoursPerDay ?? 8,
         complaintChatEnabled: s.complaintChatEnabled ?? true,
+        reservationRequiresApproval: s.reservationRequiresApproval ?? true,
       });
     }
   }, [settings]);
@@ -682,6 +693,90 @@ export default function Settings() {
                   />
                 </Field>
               </div>
+            </div>
+
+            <div>
+              <Button
+                appearance="primary"
+                icon={<Save24Regular />}
+                onClick={handleSaveSettings}
+                disabled={updateSettings.isPending}
+              >
+                {updateSettings.isPending ? "Saving..." : "Save Changes"}
+              </Button>
+            </div>
+
+            {updateSettings.isSuccess && (
+              <MessageBar intent="success">
+                <MessageBarBody>
+                  <MessageBarTitle>Success</MessageBarTitle>
+                  Settings saved successfully.
+                </MessageBarBody>
+              </MessageBar>
+            )}
+          </div>
+        );
+
+      case "reservations":
+        if (loadingSettings) {
+          return (
+            <div
+              style={{ display: "flex", justifyContent: "center", padding: 40 }}
+            >
+              <Spinner size="medium" label="Loading..." />
+            </div>
+          );
+        }
+        return (
+          <div style={{ display: "flex", flexDirection: "column", gap: 32 }}>
+            <p style={{ margin: 0, color: tokens.colorNeutralForeground2 }}>
+              Configure resource reservation settings.
+            </p>
+
+            <div>
+              <h3
+                style={{
+                  margin: "0 0 16px",
+                  fontWeight: 600,
+                  color: tokens.colorNeutralForeground1,
+                }}
+              >
+                Approval Process
+              </h3>
+              <Card style={{ padding: 16, maxWidth: 500 }}>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                  }}
+                >
+                  <div>
+                    <div style={{ fontWeight: 600, marginBottom: 4 }}>
+                      Require Approval
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 12,
+                        color: tokens.colorNeutralForeground3,
+                      }}
+                    >
+                      {form.reservationRequiresApproval
+                        ? "Reservations require manager approval before being confirmed"
+                        : "Reservations are automatically approved when submitted"}
+                    </div>
+                  </div>
+                  <Switch
+                    checked={form.reservationRequiresApproval}
+                    onChange={(_, d) =>
+                      setForm((f) => ({
+                        ...f,
+                        reservationRequiresApproval: d.checked,
+                      }))
+                    }
+                  />
+                </div>
+              </Card>
             </div>
 
             <div>

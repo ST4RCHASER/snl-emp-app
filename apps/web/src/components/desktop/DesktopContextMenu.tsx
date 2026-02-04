@@ -6,6 +6,9 @@ import {
   Clock24Regular,
   ChevronRight20Regular,
   ConferenceRoom24Regular,
+  Briefcase24Regular,
+  CalendarPerson24Regular,
+  PersonClock24Regular,
 } from "@fluentui/react-icons";
 import { useState } from "react";
 
@@ -18,6 +21,9 @@ interface ContextMenuProps {
   onAddCalendar: () => void;
   onAddClock: () => void;
   onAddMeetingRoom: () => void;
+  onAddWorkLog: () => void;
+  onAddLeave: () => void;
+  onAddReserveTime: () => void;
 }
 
 export function DesktopContextMenu({
@@ -29,6 +35,9 @@ export function DesktopContextMenu({
   onAddCalendar,
   onAddClock,
   onAddMeetingRoom,
+  onAddWorkLog,
+  onAddLeave,
+  onAddReserveTime,
 }: ContextMenuProps) {
   const [widgetsSubmenuOpen, setWidgetsSubmenuOpen] = useState(false);
 
@@ -149,6 +158,30 @@ export function DesktopContextMenu({
                 label="Meeting Room"
                 onClick={() => {
                   onAddMeetingRoom();
+                  onClose();
+                }}
+              />
+              <MenuItem
+                icon={<Briefcase24Regular />}
+                label="Work Log"
+                onClick={() => {
+                  onAddWorkLog();
+                  onClose();
+                }}
+              />
+              <MenuItem
+                icon={<CalendarPerson24Regular />}
+                label="Who's on Leave"
+                onClick={() => {
+                  onAddLeave();
+                  onClose();
+                }}
+              />
+              <MenuItem
+                icon={<PersonClock24Regular />}
+                label="My Reserved Time"
+                onClick={() => {
+                  onAddReserveTime();
                   onClose();
                 }}
               />

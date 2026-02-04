@@ -27,6 +27,8 @@ export function useUpdateSettings() {
       maxPersonalLeaveDays?: number;
       fiscalYearStartMonth?: number;
       workHoursPerDay?: number;
+      complaintChatEnabled?: boolean;
+      reservationRequiresApproval?: boolean;
     }) => {
       const { data: result, error } = await api.api.settings.put(data);
       if (error) throw error;

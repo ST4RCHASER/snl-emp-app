@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Tab,
@@ -35,10 +35,14 @@ import {
   Dismiss24Regular,
   ArrowLeft24Regular,
   Calendar24Regular,
+  CalendarMonth24Regular,
   Edit24Regular,
   Delete24Regular,
   Settings24Regular,
   People24Regular,
+  ChevronLeft24Regular,
+  ChevronRight24Regular,
+  TextBulletListLtr24Regular,
 } from "@fluentui/react-icons";
 import {
   leaveQueries,
@@ -60,10 +64,16 @@ import {
   type LeaveBalance,
 } from "@/api/queries/leave-balances";
 import { logAction } from "@/api/queries/audit";
+import { calendarQueries, type Holiday } from "@/api/queries/calendar";
 import { useAuth } from "@/auth/provider";
 import { useWindowRefresh } from "@/components/desktop/WindowContext";
 import { useMobile } from "@/hooks/useMobile";
 import { api } from "@/api/client";
+import {
+  preferencesQueries,
+  useUpdatePreferences,
+  type LeaveManagementSettings,
+} from "@/api/queries/preferences";
 
 export default function LeaveManagement() {
   const [activeTab, setActiveTab] = useState<string>("my-leaves");
@@ -80,17 +90,93 @@ export default function LeaveManagement() {
     id: string;
     type: string;
   } | null>(null);
+  const [pendingViewMode, setPendingViewMode] = useState<"list" | "calendar">(
+    "list",
+  );
+  const [allLeavesViewMode, setAllLeavesViewMode] = useState<
+    "list" | "calendar"
+  >("list");
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
   const { user } = useAuth();
   const isMobile = useMobile();
 
+  // Load preferences
+  const { data: preferences } = useQuery(preferencesQueries.user);
+  const updatePreferences = useUpdatePreferences();
+  const leaveSettings = (
+    preferences as
+      | { leaveManagementSettings?: LeaveManagementSettings }
+      | undefined
+  )?.leaveManagementSettings;
+
+  // Load settings from database when preferences are fetched
+  useEffect(() => {
+    if (leaveSettings && !settingsLoaded) {
+      if (leaveSettings.activeTab) setActiveTab(leaveSettings.activeTab);
+      if (leaveSettings.pendingViewMode)
+        setPendingViewMode(leaveSettings.pendingViewMode);
+      if (leaveSettings.allLeavesViewMode)
+        setAllLeavesViewMode(leaveSettings.allLeavesViewMode);
+      if (
+        leaveSettings.selectedEmployeeId &&
+        leaveSettings.selectedEmployeeName
+      )
+        setSelectedEmployee({
+          id: leaveSettings.selectedEmployeeId,
+          name: leaveSettings.selectedEmployeeName,
+        });
+      setSettingsLoaded(true);
+    }
+  }, [leaveSettings, settingsLoaded]);
+
+  // Save settings to database
+  const saveSettings = useCallback(
+    (settings: LeaveManagementSettings) => {
+      updatePreferences.mutate({
+        leaveManagementSettings: {
+          activeTab: leaveSettings?.activeTab,
+          pendingViewMode: leaveSettings?.pendingViewMode,
+          allLeavesViewMode: leaveSettings?.allLeavesViewMode,
+          selectedEmployeeId: leaveSettings?.selectedEmployeeId,
+          selectedEmployeeName: leaveSettings?.selectedEmployeeName,
+          ...settings,
+        },
+      });
+    },
+    [updatePreferences, leaveSettings],
+  );
+
+  // Handler for selecting an employee (saves to preferences)
+  const handleSelectEmployee = useCallback(
+    (emp: { id: string; name: string } | null) => {
+      setSelectedEmployee(emp);
+      saveSettings({
+        selectedEmployeeId: emp?.id ?? null,
+        selectedEmployeeName: emp?.name ?? null,
+      });
+    },
+    [saveSettings],
+  );
+
   const handleTabChange = (tab: string) => {
     setActiveTab(tab);
+    saveSettings({ activeTab: tab });
     logAction(
       "switch_tab",
       "navigation",
       `Switched to ${tab} tab in Leave Management`,
       { tab },
     );
+  };
+
+  const handlePendingViewModeChange = (mode: "list" | "calendar") => {
+    setPendingViewMode(mode);
+    saveSettings({ pendingViewMode: mode });
+  };
+
+  const handleAllLeavesViewModeChange = (mode: "list" | "calendar") => {
+    setAllLeavesViewMode(mode);
+    saveSettings({ allLeavesViewMode: mode });
   };
 
   const handleOpenCreateForm = () => {
@@ -415,8 +501,8 @@ export default function LeaveManagement() {
         gap: 16,
       }}
     >
-      {/* Leave Balance Cards - Now dynamic */}
-      {myBalances && myBalances.length > 0 && (
+      {/* Leave Balance Cards - Only show on My Leaves tab */}
+      {activeTab === "my-leaves" && myBalances && myBalances.length > 0 && (
         <div
           style={{ display: "flex", gap: isMobile ? 8 : 12, flexWrap: "wrap" }}
         >
@@ -488,15 +574,65 @@ export default function LeaveManagement() {
           )}
         </TabList>
 
-        {activeTab !== "leave-types" && activeTab !== "employee-balances" && (
-          <Button
-            appearance="primary"
-            icon={<Add24Regular />}
-            onClick={handleOpenCreateForm}
-          >
-            Request Leave
-          </Button>
-        )}
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {activeTab === "pending-approval" && isManager && (
+            <>
+              <Button
+                appearance={
+                  pendingViewMode === "list" ? "primary" : "secondary"
+                }
+                size="small"
+                icon={<TextBulletListLtr24Regular />}
+                onClick={() => handlePendingViewModeChange("list")}
+              >
+                List
+              </Button>
+              <Button
+                appearance={
+                  pendingViewMode === "calendar" ? "primary" : "secondary"
+                }
+                size="small"
+                icon={<CalendarMonth24Regular />}
+                onClick={() => handlePendingViewModeChange("calendar")}
+              >
+                Calendar
+              </Button>
+            </>
+          )}
+          {activeTab === "all" && isHR && (
+            <>
+              <Button
+                appearance={
+                  allLeavesViewMode === "list" ? "primary" : "secondary"
+                }
+                size="small"
+                icon={<TextBulletListLtr24Regular />}
+                onClick={() => handleAllLeavesViewModeChange("list")}
+              >
+                List
+              </Button>
+              <Button
+                appearance={
+                  allLeavesViewMode === "calendar" ? "primary" : "secondary"
+                }
+                size="small"
+                icon={<CalendarMonth24Regular />}
+                onClick={() => handleAllLeavesViewModeChange("calendar")}
+              >
+                Calendar
+              </Button>
+            </>
+          )}
+          {activeTab === "my-leaves" && (
+            <Button
+              appearance="primary"
+              icon={<Add24Regular />}
+              onClick={handleOpenCreateForm}
+            >
+              Request Leave
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Content Area */}
@@ -530,7 +666,7 @@ export default function LeaveManagement() {
             leaveTypes={leaveTypes?.filter((lt) => lt.isActive) || []}
             onBack={() => setActiveTab("my-leaves")}
             selectedEmployee={selectedEmployee}
-            onSelectEmployee={setSelectedEmployee}
+            onSelectEmployee={handleSelectEmployee}
             showDialog={showBalanceDialog}
             onCloseDialog={() => setShowBalanceDialog(false)}
             onOpenDialog={() => setShowBalanceDialog(true)}
@@ -538,9 +674,23 @@ export default function LeaveManagement() {
           />
         )}
 
+        {/* Calendar View for All Leaves (HR) */}
+        {activeTab === "all" && allLeavesViewMode === "calendar" && isHR && (
+          <LeaveCalendarView isMobile={isMobile} />
+        )}
+
+        {/* Calendar View for pending-approval (Manager's team only) */}
+        {activeTab === "pending-approval" &&
+          pendingViewMode === "calendar" &&
+          isManager && <LeaveCalendarView isMobile={isMobile} teamOnly />}
+
         {/* Leave Requests List */}
         {activeTab !== "leave-types" &&
           activeTab !== "employee-balances" &&
+          !(
+            activeTab === "pending-approval" && pendingViewMode === "calendar"
+          ) &&
+          !(activeTab === "all" && allLeavesViewMode === "calendar") &&
           (isMobile ? (
             // Mobile Card View
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -784,6 +934,10 @@ export default function LeaveManagement() {
 
         {activeTab !== "leave-types" &&
           activeTab !== "employee-balances" &&
+          !(activeTab === "all" && allLeavesViewMode === "calendar") &&
+          !(
+            activeTab === "pending-approval" && pendingViewMode === "calendar"
+          ) &&
           leaves?.length === 0 && (
             <div
               style={{
@@ -825,6 +979,828 @@ export default function LeaveManagement() {
                 {cancelLeave.isPending ? "Cancelling..." : "Yes, Cancel Leave"}
               </Button>
             </DialogActions>
+          </DialogBody>
+        </DialogSurface>
+      </Dialog>
+    </div>
+  );
+}
+
+// Leave Calendar View Component
+function LeaveCalendarView({
+  isMobile,
+  teamOnly = false,
+}: {
+  isMobile: boolean;
+  teamOnly?: boolean;
+}) {
+  const { user } = useAuth();
+  const [currentMonth, setCurrentMonth] = useState(() => new Date());
+  const [employees, setEmployees] = useState<
+    Array<{
+      id: string;
+      fullName: string | null;
+      avatar: string | null;
+      user: { name: string | null; email: string; image: string | null };
+    }>
+  >([]);
+  const [loadingEmployees, setLoadingEmployees] = useState(true);
+  const [selectedLeave, setSelectedLeave] = useState<{
+    id: string;
+    employeeId: string;
+    employeeName: string;
+    leaveTypeConfig: {
+      id: string;
+      name: string;
+      code: string;
+      color: string | null;
+    };
+    startDate: string;
+    endDate: string;
+    status: string;
+    isHalfDay: boolean;
+    reason?: string;
+  } | null>(null);
+
+  const userRole = (user as { role?: string } | undefined)?.role;
+  const canApprove =
+    userRole === "MANAGEMENT" || userRole === "HR" || userRole === "DEVELOPER";
+
+  const approveLeave = useApproveLeave();
+  const cancelLeave = useCancelLeave();
+
+  // Fetch employees (all or team only based on prop)
+  useMemo(() => {
+    const fetchEmployees = async () => {
+      try {
+        if (teamOnly) {
+          // Fetch only team members (employees managed by current user)
+          const { data, error } = await api.api.employees["my-team"].get();
+          if (error) throw error;
+          setEmployees(
+            (data as Array<{
+              id: string;
+              fullName: string | null;
+              avatar: string | null;
+              user: {
+                name: string | null;
+                email: string;
+                image: string | null;
+              };
+            }>) || [],
+          );
+        } else {
+          // Fetch all employees
+          const { data, error } = await api.api.employees.get();
+          if (error) throw error;
+          setEmployees(
+            (data as Array<{
+              id: string;
+              fullName: string | null;
+              avatar: string | null;
+              user: {
+                name: string | null;
+                email: string;
+                image: string | null;
+              };
+            }>) || [],
+          );
+        }
+      } catch (e) {
+        console.error("Failed to fetch employees:", e);
+      } finally {
+        setLoadingEmployees(false);
+      }
+    };
+    fetchEmployees();
+  }, [teamOnly]);
+
+  // Calculate month date range
+  const { startDateISO, endDateISO, daysInMonth } = useMemo(() => {
+    const start = new Date(
+      currentMonth.getFullYear(),
+      currentMonth.getMonth(),
+      1,
+    );
+    const end = new Date(
+      currentMonth.getFullYear(),
+      currentMonth.getMonth() + 1,
+      0,
+      23,
+      59,
+      59,
+    );
+    const days: Date[] = [];
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      days.push(new Date(d));
+    }
+    return {
+      startDateISO: start.toISOString(),
+      endDateISO: end.toISOString(),
+      daysInMonth: days,
+    };
+  }, [currentMonth]);
+
+  // Fetch all leaves for the month - use standard query so it gets invalidated properly
+  const { data: leavesData, isLoading: loadingLeaves } = useQuery(
+    leaveQueries.all("all"),
+  );
+  const allLeaves = leavesData as
+    | Array<{
+        id: string;
+        employeeId: string;
+        leaveTypeConfig: {
+          id: string;
+          name: string;
+          code: string;
+          color: string | null;
+        };
+        startDate: string;
+        endDate: string;
+        status: string;
+        isHalfDay: boolean;
+        halfDayType: "morning" | "afternoon" | null;
+        reason: string;
+      }>
+    | undefined;
+
+  // Fetch holidays for the month
+  const { data: holidaysData } = useQuery(
+    calendarQueries.holidays(startDateISO, endDateISO),
+  );
+
+  // Helper to format date as YYYY-MM-DD in local timezone
+  const formatDateKey = (date: Date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+
+  // Build holiday map (date -> holiday)
+  const holidayMap = useMemo(() => {
+    const map: Record<string, Holiday> = {};
+    if (!holidaysData?.holidays) return map;
+
+    holidaysData.holidays.forEach((holiday) => {
+      const holidayStart = new Date(holiday.start);
+      const holidayEnd = new Date(holiday.end);
+
+      for (
+        let d = new Date(holidayStart);
+        d <= holidayEnd;
+        d.setDate(d.getDate() + 1)
+      ) {
+        const dateKey = formatDateKey(d);
+        map[dateKey] = holiday;
+      }
+    });
+
+    return map;
+  }, [holidaysData]);
+
+  // Filter leaves for the current month and approved/pending status
+  const monthLeaves = useMemo(() => {
+    if (!allLeaves) return [];
+    return allLeaves.filter((leave) => {
+      if (leave.status !== "APPROVED" && leave.status !== "PENDING")
+        return false;
+      const leaveStart = new Date(leave.startDate);
+      const leaveEnd = new Date(leave.endDate);
+      const monthStart = new Date(
+        currentMonth.getFullYear(),
+        currentMonth.getMonth(),
+        1,
+      );
+      const monthEnd = new Date(
+        currentMonth.getFullYear(),
+        currentMonth.getMonth() + 1,
+        0,
+      );
+      return leaveStart <= monthEnd && leaveEnd >= monthStart;
+    });
+  }, [allLeaves, currentMonth]);
+
+  // Build a map of employee -> date -> leaves
+  const leaveMap = useMemo(() => {
+    const map: Record<string, Record<string, typeof monthLeaves>> = {};
+
+    monthLeaves.forEach((leave) => {
+      if (!map[leave.employeeId]) {
+        map[leave.employeeId] = {};
+      }
+
+      const leaveStart = new Date(leave.startDate);
+      const leaveEnd = new Date(leave.endDate);
+
+      for (
+        let d = new Date(leaveStart);
+        d <= leaveEnd;
+        d.setDate(d.getDate() + 1)
+      ) {
+        const dateKey = formatDateKey(d);
+        if (!map[leave.employeeId][dateKey]) {
+          map[leave.employeeId][dateKey] = [];
+        }
+        map[leave.employeeId][dateKey].push(leave);
+      }
+    });
+
+    return map;
+  }, [monthLeaves]);
+
+  const navigateMonth = (direction: "prev" | "next") => {
+    setCurrentMonth((prev) => {
+      const newDate = new Date(prev);
+      newDate.setMonth(newDate.getMonth() + (direction === "next" ? 1 : -1));
+      return newDate;
+    });
+  };
+
+  const goToToday = () => {
+    setCurrentMonth(new Date());
+  };
+
+  const getEmployeeName = (emp: {
+    fullName: string | null;
+    user: { name: string | null; email: string };
+  }) => {
+    return emp.fullName || emp.user.name || emp.user.email;
+  };
+
+  if (loadingEmployees || loadingLeaves) {
+    return (
+      <div style={{ display: "flex", justifyContent: "center", padding: 40 }}>
+        <Spinner size="large" label="Loading calendar..." />
+      </div>
+    );
+  }
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        height: "100%",
+        gap: 12,
+      }}
+    >
+      {/* Month Navigation */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "0 8px",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <Button
+            appearance="subtle"
+            icon={<ChevronLeft24Regular />}
+            onClick={() => navigateMonth("prev")}
+          />
+          <Button appearance="outline" onClick={goToToday}>
+            Today
+          </Button>
+          <Button
+            appearance="subtle"
+            icon={<ChevronRight24Regular />}
+            onClick={() => navigateMonth("next")}
+          />
+          <span style={{ fontWeight: 600, marginLeft: 8 }}>
+            {currentMonth.toLocaleDateString("en-US", {
+              month: "long",
+              year: "numeric",
+            })}
+          </span>
+        </div>
+        <div style={{ fontSize: 12, color: tokens.colorNeutralForeground3 }}>
+          {employees.length} employees
+        </div>
+      </div>
+
+      {/* Calendar Grid */}
+      <div
+        style={{
+          flex: 1,
+          overflow: "auto",
+          border: `1px solid ${tokens.colorNeutralStroke1}`,
+          borderRadius: 8,
+        }}
+      >
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: isMobile
+              ? `120px repeat(${daysInMonth.length}, 40px)`
+              : `180px repeat(${daysInMonth.length}, minmax(28px, 1fr))`,
+            minWidth: isMobile ? "fit-content" : undefined,
+          }}
+        >
+          {/* Header Row - Days */}
+          <div
+            style={{
+              position: "sticky",
+              left: 0,
+              top: 0,
+              background: tokens.colorNeutralBackground3,
+              padding: "8px 12px",
+              fontWeight: 600,
+              fontSize: 12,
+              borderBottom: `1px solid ${tokens.colorNeutralStroke1}`,
+              borderRight: `1px solid ${tokens.colorNeutralStroke1}`,
+              zIndex: 3,
+            }}
+          >
+            Employee
+          </div>
+          {daysInMonth.map((day) => {
+            const dateKey = formatDateKey(day);
+            const isWeekend = day.getDay() === 0 || day.getDay() === 6;
+            const isToday = day.toDateString() === new Date().toDateString();
+            const holiday = holidayMap[dateKey];
+            const isHoliday = !!holiday;
+
+            return (
+              <Tooltip
+                key={dateKey}
+                content={holiday?.summary || ""}
+                relationship="label"
+                visible={isHoliday ? undefined : false}
+              >
+                <div
+                  style={{
+                    position: "sticky",
+                    top: 0,
+                    background: isHoliday
+                      ? tokens.colorPaletteRedBackground1
+                      : isWeekend
+                        ? tokens.colorNeutralBackground4
+                        : tokens.colorNeutralBackground3,
+                    padding: "4px 2px",
+                    textAlign: "center",
+                    fontSize: 11,
+                    borderBottom: `1px solid ${tokens.colorNeutralStroke1}`,
+                    borderRight: `1px solid ${tokens.colorNeutralStroke2}`,
+                    zIndex: 2,
+                  }}
+                >
+                  <div
+                    style={{
+                      fontWeight: isToday ? 700 : 400,
+                      color: isToday
+                        ? tokens.colorBrandForeground1
+                        : isHoliday
+                          ? tokens.colorPaletteRedForeground1
+                          : isWeekend
+                            ? tokens.colorNeutralForeground4
+                            : tokens.colorNeutralForeground1,
+                    }}
+                  >
+                    {day.getDate()}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 9,
+                      color: isHoliday
+                        ? tokens.colorPaletteRedForeground2
+                        : tokens.colorNeutralForeground4,
+                    }}
+                  >
+                    {day
+                      .toLocaleDateString("en-US", { weekday: "short" })
+                      .charAt(0)}
+                  </div>
+                </div>
+              </Tooltip>
+            );
+          })}
+
+          {/* Employee Rows */}
+          {employees.map((emp) => (
+            <>
+              {/* Employee Name Cell */}
+              <div
+                key={`emp-${emp.id}`}
+                style={{
+                  position: "sticky",
+                  left: 0,
+                  background: tokens.colorNeutralBackground1,
+                  padding: "6px 12px",
+                  fontSize: 13,
+                  borderBottom: `1px solid ${tokens.colorNeutralStroke2}`,
+                  borderRight: `1px solid ${tokens.colorNeutralStroke1}`,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  zIndex: 1,
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+              >
+                <div
+                  style={{
+                    width: 24,
+                    height: 24,
+                    borderRadius: "50%",
+                    background: tokens.colorNeutralBackground4,
+                    backgroundImage:
+                      emp.avatar || emp.user.image
+                        ? `url(${emp.avatar || emp.user.image})`
+                        : undefined,
+                    backgroundSize: "cover",
+                    flexShrink: 0,
+                  }}
+                />
+                <span
+                  style={{
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  }}
+                >
+                  {getEmployeeName(emp)}
+                </span>
+              </div>
+
+              {/* Day Cells */}
+              {daysInMonth.map((day) => {
+                const dateKey = formatDateKey(day);
+                const dayLeaves = leaveMap[emp.id]?.[dateKey] || [];
+                const isWeekend = day.getDay() === 0 || day.getDay() === 6;
+                const isToday =
+                  day.toDateString() === new Date().toDateString();
+                const isHoliday = !!holidayMap[dateKey];
+
+                return (
+                  <div
+                    key={`${emp.id}-${dateKey}`}
+                    style={{
+                      background: isHoliday
+                        ? tokens.colorPaletteRedBackground1
+                        : isWeekend
+                          ? tokens.colorNeutralBackground3
+                          : tokens.colorNeutralBackground1,
+                      borderBottom: `1px solid ${tokens.colorNeutralStroke2}`,
+                      borderRight: `1px solid ${tokens.colorNeutralStroke2}`,
+                      padding: 2,
+                      minHeight: 32,
+                      position: "relative",
+                      outline: isToday
+                        ? `2px solid ${tokens.colorBrandStroke1}`
+                        : undefined,
+                      outlineOffset: -2,
+                    }}
+                  >
+                    {dayLeaves.length > 0 && (
+                      <div
+                        style={{
+                          position: "absolute",
+                          inset: 2,
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: 2,
+                        }}
+                      >
+                        {dayLeaves.map((leave, idx) => {
+                          const isPending = leave.status === "PENDING";
+                          const isHalfDay = leave.isHalfDay;
+                          const isMorning = leave.halfDayType === "morning";
+                          const baseColor =
+                            leave.leaveTypeConfig.color ||
+                            tokens.colorPaletteBlueBorderActive;
+
+                          const handleClick = () => {
+                            setSelectedLeave({
+                              ...leave,
+                              employeeName: getEmployeeName(emp),
+                            });
+                          };
+
+                          return (
+                            <Tooltip
+                              key={`${leave.id}-${idx}`}
+                              content={`${leave.leaveTypeConfig.name}${isPending ? " (Pending)" : ""}${isHalfDay ? ` (${isMorning ? "Morning" : "Afternoon"})` : ""} - Click to view`}
+                              relationship="label"
+                            >
+                              <div
+                                onClick={handleClick}
+                                style={{
+                                  width: isHalfDay ? "50%" : "100%",
+                                  marginLeft:
+                                    isHalfDay && !isMorning ? "50%" : undefined,
+                                  flex: 1,
+                                  minHeight: 8,
+                                  borderRadius: 2,
+                                  background: isPending
+                                    ? `repeating-linear-gradient(
+                                        45deg,
+                                        ${baseColor},
+                                        ${baseColor} 2px,
+                                        transparent 2px,
+                                        transparent 4px
+                                      )`
+                                    : baseColor,
+                                  border: isPending
+                                    ? `1px solid ${baseColor}`
+                                    : undefined,
+                                  boxSizing: "border-box",
+                                  cursor: "pointer",
+                                }}
+                              />
+                            </Tooltip>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </>
+          ))}
+        </div>
+      </div>
+
+      {/* Legend */}
+      <div
+        style={{
+          display: "flex",
+          gap: 16,
+          flexWrap: "wrap",
+          padding: "8px 0",
+          fontSize: 12,
+        }}
+      >
+        {Array.from(
+          new Set(monthLeaves.map((l) => JSON.stringify(l.leaveTypeConfig))),
+        )
+          .map((s) => JSON.parse(s) as { name: string; color: string | null })
+          .map((lt) => (
+            <div
+              key={lt.name}
+              style={{ display: "flex", alignItems: "center", gap: 6 }}
+            >
+              <div
+                style={{
+                  width: 12,
+                  height: 12,
+                  borderRadius: 2,
+                  background: lt.color || tokens.colorPaletteBlueBorderActive,
+                }}
+              />
+              <span>{lt.name}</span>
+            </div>
+          ))}
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <div
+            style={{
+              width: 12,
+              height: 12,
+              borderRadius: 2,
+              background: `repeating-linear-gradient(
+                45deg,
+                ${tokens.colorNeutralForeground3},
+                ${tokens.colorNeutralForeground3} 2px,
+                transparent 2px,
+                transparent 4px
+              )`,
+              border: `1px solid ${tokens.colorNeutralForeground3}`,
+            }}
+          />
+          <span style={{ color: tokens.colorNeutralForeground3 }}>
+            Pending approval
+          </span>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <div
+            style={{
+              width: 6,
+              height: 12,
+              borderRadius: 2,
+              background: tokens.colorNeutralForeground3,
+            }}
+          />
+          <span style={{ color: tokens.colorNeutralForeground3 }}>
+            Half day
+          </span>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <div
+            style={{
+              width: 12,
+              height: 12,
+              borderRadius: 2,
+              background: tokens.colorPaletteRedBackground1,
+              border: `1px solid ${tokens.colorPaletteRedBorder1}`,
+            }}
+          />
+          <span style={{ color: tokens.colorNeutralForeground3 }}>Holiday</span>
+        </div>
+      </div>
+
+      {/* Leave Details Dialog */}
+      <Dialog
+        open={!!selectedLeave}
+        onOpenChange={(_, d) => !d.open && setSelectedLeave(null)}
+      >
+        <DialogSurface style={{ maxWidth: 400 }}>
+          <DialogBody>
+            <DialogTitle
+              action={
+                <Button
+                  appearance="subtle"
+                  icon={<Dismiss24Regular />}
+                  onClick={() => setSelectedLeave(null)}
+                />
+              }
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div
+                  style={{
+                    width: 16,
+                    height: 16,
+                    borderRadius: 4,
+                    background:
+                      selectedLeave?.leaveTypeConfig.color ||
+                      tokens.colorPaletteBlueBorderActive,
+                  }}
+                />
+                {selectedLeave?.leaveTypeConfig.name}
+                {selectedLeave?.isHalfDay && (
+                  <Badge color="informative" size="small">
+                    Half Day
+                  </Badge>
+                )}
+              </div>
+            </DialogTitle>
+            <DialogContent>
+              <div
+                style={{ display: "flex", flexDirection: "column", gap: 12 }}
+              >
+                <div>
+                  <div
+                    style={{
+                      fontSize: 12,
+                      color: tokens.colorNeutralForeground3,
+                      marginBottom: 4,
+                    }}
+                  >
+                    Employee
+                  </div>
+                  <div style={{ fontWeight: 500 }}>
+                    {selectedLeave?.employeeName}
+                  </div>
+                </div>
+
+                <div>
+                  <div
+                    style={{
+                      fontSize: 12,
+                      color: tokens.colorNeutralForeground3,
+                      marginBottom: 4,
+                    }}
+                  >
+                    Period
+                  </div>
+                  <div
+                    style={{ display: "flex", alignItems: "center", gap: 6 }}
+                  >
+                    <Calendar24Regular style={{ fontSize: 16 }} />
+                    {selectedLeave &&
+                      new Date(
+                        selectedLeave.startDate,
+                      ).toLocaleDateString()}{" "}
+                    -{" "}
+                    {selectedLeave &&
+                      new Date(selectedLeave.endDate).toLocaleDateString()}
+                  </div>
+                </div>
+
+                <div>
+                  <div
+                    style={{
+                      fontSize: 12,
+                      color: tokens.colorNeutralForeground3,
+                      marginBottom: 4,
+                    }}
+                  >
+                    Status
+                  </div>
+                  <Badge
+                    color={
+                      selectedLeave?.status === "APPROVED"
+                        ? "success"
+                        : selectedLeave?.status === "PENDING"
+                          ? "warning"
+                          : "informative"
+                    }
+                  >
+                    {selectedLeave?.status}
+                  </Badge>
+                </div>
+
+                {selectedLeave?.reason && (
+                  <div>
+                    <div
+                      style={{
+                        fontSize: 12,
+                        color: tokens.colorNeutralForeground3,
+                        marginBottom: 4,
+                      }}
+                    >
+                      Reason
+                    </div>
+                    <div
+                      style={{
+                        padding: 8,
+                        background: tokens.colorNeutralBackground3,
+                        borderRadius: 4,
+                        fontSize: 13,
+                      }}
+                    >
+                      {selectedLeave.reason}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </DialogContent>
+            {((selectedLeave?.status === "PENDING" && canApprove) ||
+              ((selectedLeave?.status === "PENDING" ||
+                selectedLeave?.status === "APPROVED") &&
+                canApprove)) && (
+              <DialogActions style={{ gap: 8, justifyContent: "flex-end" }}>
+                {selectedLeave?.status === "PENDING" && canApprove && (
+                  <>
+                    <Button
+                      appearance="primary"
+                      icon={<Checkmark24Regular />}
+                      onClick={() => {
+                        if (selectedLeave) {
+                          approveLeave.mutate(
+                            { id: selectedLeave.id, approved: true },
+                            {
+                              onSuccess: () => setSelectedLeave(null),
+                              onError: (err) => {
+                                console.error("Approve error:", err);
+                                alert(
+                                  `Failed to approve: ${err instanceof Error ? err.message : "Unknown error"}`,
+                                );
+                              },
+                            },
+                          );
+                        }
+                      }}
+                      disabled={approveLeave.isPending}
+                    >
+                      Approve
+                    </Button>
+                    <Button
+                      appearance="secondary"
+                      icon={<Dismiss24Regular />}
+                      onClick={() => {
+                        if (selectedLeave) {
+                          approveLeave.mutate(
+                            { id: selectedLeave.id, approved: false },
+                            {
+                              onSuccess: () => setSelectedLeave(null),
+                              onError: (err) => {
+                                console.error("Reject error:", err);
+                                alert(
+                                  `Failed to reject: ${err instanceof Error ? err.message : "Unknown error"}`,
+                                );
+                              },
+                            },
+                          );
+                        }
+                      }}
+                      disabled={approveLeave.isPending}
+                    >
+                      Reject
+                    </Button>
+                  </>
+                )}
+                {(selectedLeave?.status === "PENDING" ||
+                  selectedLeave?.status === "APPROVED") &&
+                  canApprove && (
+                    <Button
+                      appearance="subtle"
+                      icon={<Delete24Regular />}
+                      onClick={() => {
+                        if (selectedLeave) {
+                          cancelLeave.mutate(selectedLeave.id, {
+                            onSuccess: () => setSelectedLeave(null),
+                          });
+                        }
+                      }}
+                      disabled={cancelLeave.isPending}
+                      style={{ color: tokens.colorPaletteRedForeground1 }}
+                    >
+                      Cancel
+                    </Button>
+                  )}
+              </DialogActions>
+            )}
           </DialogBody>
         </DialogSurface>
       </Dialog>

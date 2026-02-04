@@ -61,6 +61,22 @@ export const employeeRoutes = new Elysia({ prefix: "/api/employees" })
               role: true,
             },
           },
+          managementLeads: {
+            include: {
+              manager: {
+                include: {
+                  user: {
+                    select: {
+                      id: true,
+                      email: true,
+                      name: true,
+                      image: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
         },
       });
 
@@ -144,6 +160,55 @@ export const employeeRoutes = new Elysia({ prefix: "/api/employees" })
       detail: {
         tags: ["Employees"],
         summary: "Update current user's profile (personal info only)",
+      },
+    },
+  )
+
+  // Get current user's team members (employees they manage)
+  .get(
+    "/my-team",
+    async ({ user, set }) => {
+      if (!user) {
+        set.status = 401;
+        return { message: "Unauthorized" };
+      }
+
+      // Get current user's employee record
+      const currentEmployee = await prisma.employee.findFirst({
+        where: { userId: user.id },
+      });
+
+      if (!currentEmployee) {
+        set.status = 404;
+        return { message: "Employee profile not found" };
+      }
+
+      // Get employees managed by the current user
+      const managedEmployees = await prisma.employeeManagement.findMany({
+        where: { managerId: currentEmployee.id },
+        include: {
+          employee: {
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  email: true,
+                  name: true,
+                  image: true,
+                  role: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
+      return managedEmployees.map((em) => em.employee);
+    },
+    {
+      detail: {
+        tags: ["Employees"],
+        summary: "Get current user's team members (employees they manage)",
       },
     },
   )

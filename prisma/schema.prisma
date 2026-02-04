@@ -81,7 +81,9 @@ model UserPreferences {
   appSizes        Json? // { appId: { width, height } } - remembered window sizes
 
   // App-specific settings
-  teamCalendarSettings Json? // { showEvents, showWorkLogs, showReservations, viewMode }
+  teamCalendarSettings         Json? // { showEvents, showWorkLogs, showReservations, viewMode }
+  resourceReservationSettings  Json? // { viewMode, selectedResourceId, activeTab }
+  leaveManagementSettings      Json? // { activeTab, pendingViewMode, allLeavesViewMode }
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -271,6 +273,9 @@ model GlobalSettings {
 
   // Complaint settings
   complaintChatEnabled Boolean @default(true) // Enable/disable chat for complaints
+
+  // Resource reservation settings
+  reservationRequiresApproval Boolean @default(true) // Whether reservations need manager approval
 
   updatedAt DateTime @updatedAt
 

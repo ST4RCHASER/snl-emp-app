@@ -108,6 +108,19 @@ export const reservationQueries = {
       return data as unknown as Reservation[];
     },
   }),
+
+  myTime: (startDate?: string, endDate?: string) =>
+    queryOptions({
+      queryKey: ["reservations", "my-time", startDate, endDate],
+      queryFn: async () => {
+        const { data, error } = await api.api.reservations["my-time"].get({
+          query: { startDate, endDate },
+        });
+        if (error) throw error;
+        if (!Array.isArray(data)) throw new Error("Unexpected response");
+        return data as unknown as Reservation[];
+      },
+    }),
 };
 
 export function useCreateReservation() {
@@ -160,6 +173,33 @@ export function useRespondReservation() {
         `${variables.approved ? "Approved" : "Rejected"} reservation request`,
         { id: variables.id },
       );
+    },
+  });
+}
+
+export function useUpdateReservation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      id: string;
+      hours: number;
+      title: string;
+      description?: string;
+    }) => {
+      const { data, error } = await api.api.reservations({ id: input.id }).put({
+        hours: input.hours,
+        title: input.title,
+        description: input.description,
+      });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["reservations"] });
+      logAction("update_reservation", "form", "Updated reservation request", {
+        id: variables.id,
+        hours: variables.hours,
+      });
     },
   });
 }

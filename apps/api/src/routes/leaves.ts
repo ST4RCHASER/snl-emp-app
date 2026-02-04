@@ -214,6 +214,38 @@ export const leaveRoutes = new Elysia({ prefix: "/api/leaves" })
         return { message: `Invalid leave type: ${body.type}` };
       }
 
+      // Check for overlapping leave requests (pending or approved)
+      const overlappingLeaves = await prisma.leaveRequest.findMany({
+        where: {
+          employeeId: employee.id,
+          status: { in: ["PENDING", "APPROVED"] },
+          OR: [
+            // New request starts during existing leave
+            {
+              startDate: { lte: endDate },
+              endDate: { gte: startDate },
+            },
+          ],
+        },
+        include: {
+          leaveTypeConfig: true,
+        },
+      });
+
+      if (overlappingLeaves.length > 0) {
+        const existingLeave = overlappingLeaves[0];
+        const existingStart = new Date(
+          existingLeave.startDate,
+        ).toLocaleDateString();
+        const existingEnd = new Date(
+          existingLeave.endDate,
+        ).toLocaleDateString();
+        set.status = 400;
+        return {
+          message: `You already have a ${existingLeave.status.toLowerCase()} ${existingLeave.leaveTypeConfig.name} request for ${existingStart} - ${existingEnd}. Please cancel or wait for rejection before requesting leave for overlapping dates.`,
+        };
+      }
+
       const leaveRequest = await prisma.leaveRequest.create({
         data: {
           employeeId: employee.id,
@@ -397,12 +429,17 @@ export const leaveRoutes = new Elysia({ prefix: "/api/leaves" })
       const approval = leave.approvals.find(
         (a: { approverId: string }) => a.approverId === employee.id,
       );
-      if (!approval && user.role !== "DEVELOPER") {
+
+      // HR and DEVELOPER can approve/reject directly without being in the approvals list
+      const canDirectApprove = user.role === "DEVELOPER" || user.role === "HR";
+
+      if (!approval && !canDirectApprove) {
         set.status = 403;
         return { message: "You are not an approver for this leave request" };
       }
 
       if (approval) {
+        // Update the approval record if the user is in the approvals list
         await prisma.leaveApproval.update({
           where: { id: approval.id },
           data: {
@@ -413,6 +450,33 @@ export const leaveRoutes = new Elysia({ prefix: "/api/leaves" })
         });
       }
 
+      // HR/DEVELOPER can directly approve/reject - update status immediately
+      if (canDirectApprove) {
+        const newStatus: LeaveStatus = body.approved ? "APPROVED" : "REJECTED";
+        await prisma.leaveRequest.update({
+          where: { id },
+          data: { status: newStatus },
+        });
+
+        // Also mark all pending approvals as responded
+        await prisma.leaveApproval.updateMany({
+          where: {
+            leaveRequestId: id,
+            approved: null,
+          },
+          data: {
+            approved: body.approved,
+            respondedAt: new Date(),
+          },
+        });
+
+        return {
+          message: body.approved ? "Leave approved" : "Leave rejected",
+          status: newStatus,
+        };
+      }
+
+      // For regular managers (not HR/DEVELOPER), check if all approvers have responded
       const updatedLeave = await prisma.leaveRequest.findUnique({
         where: { id },
         include: { approvals: true },

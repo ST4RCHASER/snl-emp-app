@@ -64,6 +64,14 @@ export const preferencesRoutes = new Elysia({ prefix: "/api/preferences" })
           body.teamCalendarSettings === null
             ? { set: null }
             : body.teamCalendarSettings,
+        resourceReservationSettings:
+          body.resourceReservationSettings === null
+            ? { set: null }
+            : body.resourceReservationSettings,
+        leaveManagementSettings:
+          body.leaveManagementSettings === null
+            ? { set: null }
+            : body.leaveManagementSettings,
       };
 
       const preferences = await prisma.userPreferences.upsert({
@@ -79,6 +87,9 @@ export const preferencesRoutes = new Elysia({ prefix: "/api/preferences" })
           windowStates: body.windowStates ?? undefined,
           appSizes: body.appSizes ?? undefined,
           teamCalendarSettings: body.teamCalendarSettings ?? undefined,
+          resourceReservationSettings:
+            body.resourceReservationSettings ?? undefined,
+          leaveManagementSettings: body.leaveManagementSettings ?? undefined,
         },
       });
 
@@ -171,6 +182,38 @@ export const preferencesRoutes = new Elysia({ prefix: "/api/preferences" })
                   t.Literal("month"),
                 ]),
               ),
+            }),
+            t.Null(),
+          ]),
+        ),
+        resourceReservationSettings: t.Optional(
+          t.Union([
+            t.Object({
+              viewMode: t.Optional(
+                t.Union([
+                  t.Literal("day"),
+                  t.Literal("week"),
+                  t.Literal("month"),
+                ]),
+              ),
+              selectedResourceId: t.Optional(t.Union([t.String(), t.Null()])),
+              activeTab: t.Optional(t.String()),
+            }),
+            t.Null(),
+          ]),
+        ),
+        leaveManagementSettings: t.Optional(
+          t.Union([
+            t.Object({
+              activeTab: t.Optional(t.String()),
+              pendingViewMode: t.Optional(
+                t.Union([t.Literal("list"), t.Literal("calendar")]),
+              ),
+              allLeavesViewMode: t.Optional(
+                t.Union([t.Literal("list"), t.Literal("calendar")]),
+              ),
+              selectedEmployeeId: t.Optional(t.Union([t.String(), t.Null()])),
+              selectedEmployeeName: t.Optional(t.Union([t.String(), t.Null()])),
             }),
             t.Null(),
           ]),

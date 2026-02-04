@@ -1,6 +1,13 @@
 import { create } from "zustand";
 
-export type WidgetType = "sticky-note" | "calendar" | "clock" | "meeting-room";
+export type WidgetType =
+  | "sticky-note"
+  | "calendar"
+  | "clock"
+  | "meeting-room"
+  | "worklog"
+  | "leave"
+  | "reserve-time";
 
 export type CalendarStyle = "month" | "week" | "agenda";
 
@@ -37,11 +44,26 @@ export interface MeetingRoomWidget extends BaseWidget {
   expanded?: boolean;
 }
 
+export interface WorkLogWidget extends BaseWidget {
+  type: "worklog";
+}
+
+export interface LeaveWidget extends BaseWidget {
+  type: "leave";
+}
+
+export interface ReserveTimeWidget extends BaseWidget {
+  type: "reserve-time";
+}
+
 export type Widget =
   | StickyNoteWidget
   | CalendarWidget
   | ClockWidget
-  | MeetingRoomWidget;
+  | MeetingRoomWidget
+  | WorkLogWidget
+  | LeaveWidget
+  | ReserveTimeWidget;
 
 interface WidgetStore {
   widgets: Widget[];

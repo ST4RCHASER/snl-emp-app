@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Button,
@@ -28,19 +28,29 @@ import {
   Dismiss24Regular,
   Clock24Regular,
   Person24Regular,
+  Warning16Regular,
+  Edit24Regular,
+  Save24Regular,
 } from "@fluentui/react-icons";
 import {
   reservationQueries,
   useCreateReservation,
   useRespondReservation,
+  useUpdateReservation,
   useCancelReservation,
   type Resource,
   type Reservation,
 } from "@/api/queries/reservations";
 import { settingsQueries } from "@/api/queries/settings";
 import { calendarQueries, type Holiday } from "@/api/queries/calendar";
+import {
+  preferencesQueries,
+  useUpdatePreferences,
+  type ResourceReservationSettings,
+} from "@/api/queries/preferences";
 import { useWindowRefresh } from "@/components/desktop/WindowContext";
 import { logAction } from "@/api/queries/audit";
+import { useAuth } from "@/auth/provider";
 
 type ViewMode = "day" | "week" | "month";
 
@@ -69,12 +79,15 @@ const getDateKey = (dateValue: unknown): string => {
 };
 
 export default function ResourceReservation() {
+  const { user } = useAuth();
+
   const [viewMode, setViewMode] = useState<ViewMode>("week");
   const [selectedDate, setSelectedDate] = useState(() => new Date());
   const [activeTab, setActiveTab] = useState<string>("calendar");
-  const [selectedResource, setSelectedResource] = useState<Resource | null>(
+  const [selectedResourceId, setSelectedResourceId] = useState<string | null>(
     null,
   );
+  const [prefsLoaded, setPrefsLoaded] = useState(false);
   const [reservationDialog, setReservationDialog] = useState<{
     date: string;
     resource: Resource;
@@ -84,9 +97,22 @@ export default function ResourceReservation() {
     title: "",
     description: "",
   });
+  const [viewReservation, setViewReservation] = useState<Reservation | null>(
+    null,
+  );
+  const [isEditing, setIsEditing] = useState(false);
+  const [editForm, setEditForm] = useState({
+    hours: 0,
+    title: "",
+    description: "",
+  });
+  const [confirmCancel, setConfirmCancel] = useState(false);
 
   // Refresh data when window refresh button is clicked
-  const queryKeys = useMemo(() => [["reservations"], ["settings"]], []);
+  const queryKeys = useMemo(
+    () => [["reservations"], ["settings"], ["preferences"]],
+    [],
+  );
   useWindowRefresh(queryKeys);
 
   // Fetch resources (employees with managers)
@@ -94,10 +120,81 @@ export default function ResourceReservation() {
     reservationQueries.resources,
   );
 
-  // Fetch settings for work hours per day
+  // Fetch user preferences
+  const { data: preferences } = useQuery(preferencesQueries.user);
+  const updatePreferences = useUpdatePreferences();
+
+  // Load preferences on mount
+  useEffect(() => {
+    if (preferences && !prefsLoaded) {
+      const savedSettings = (
+        preferences as {
+          resourceReservationSettings?: ResourceReservationSettings;
+        }
+      )?.resourceReservationSettings;
+      if (savedSettings) {
+        if (savedSettings.viewMode) {
+          setViewMode(savedSettings.viewMode);
+        }
+        if (savedSettings.selectedResourceId) {
+          setSelectedResourceId(savedSettings.selectedResourceId);
+        }
+        if (savedSettings.activeTab) {
+          setActiveTab(savedSettings.activeTab);
+        }
+      }
+      setPrefsLoaded(true);
+    }
+  }, [preferences, prefsLoaded]);
+
+  // Derive selectedResource from resources and selectedResourceId
+  const selectedResource = useMemo(() => {
+    if (!selectedResourceId || resources.length === 0) return null;
+    return resources.find((r) => r.id === selectedResourceId) || null;
+  }, [resources, selectedResourceId]);
+
+  // Save preferences when state changes (debounced)
+  const savePrefsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  useEffect(() => {
+    if (!prefsLoaded) return;
+
+    if (savePrefsTimeoutRef.current) {
+      clearTimeout(savePrefsTimeoutRef.current);
+    }
+
+    savePrefsTimeoutRef.current = setTimeout(() => {
+      updatePreferences.mutate({
+        resourceReservationSettings: {
+          viewMode,
+          selectedResourceId,
+          activeTab,
+        },
+      });
+    }, 500);
+
+    return () => {
+      if (savePrefsTimeoutRef.current) {
+        clearTimeout(savePrefsTimeoutRef.current);
+      }
+    };
+  }, [viewMode, selectedResourceId, activeTab, prefsLoaded]);
+
+  // Fetch settings for work hours per day and approval requirement
   const { data: settings } = useQuery(settingsQueries.global);
   const workHoursPerDay =
     (settings as { workHoursPerDay?: number })?.workHoursPerDay ?? 8;
+  const requiresApproval =
+    (settings as { reservationRequiresApproval?: boolean })
+      ?.reservationRequiresApproval ?? true;
+
+  // Redirect to calendar tab if approvals tab is selected but approval is not required
+  useEffect(() => {
+    if (activeTab === "approvals" && !requiresApproval) {
+      setActiveTab("calendar");
+    }
+  }, [activeTab, requiresApproval]);
 
   // Calculate date range based on view mode
   const { startDate, endDate, startDateISO, endDateISO, dateLabels } =
@@ -181,10 +278,11 @@ export default function ResourceReservation() {
     ),
   );
 
-  // Fetch my team reservations (for approval)
-  const { data: myTeamReservations = [], isLoading: loadingMyTeam } = useQuery(
-    reservationQueries.myTeam(),
-  );
+  // Fetch my team reservations (for approval) - only when approval is required
+  const { data: myTeamReservations = [], isLoading: loadingMyTeam } = useQuery({
+    ...reservationQueries.myTeam(),
+    enabled: requiresApproval,
+  });
 
   // Fetch my requests
   const { data: myRequests = [], isLoading: loadingMyRequests } = useQuery(
@@ -199,6 +297,7 @@ export default function ResourceReservation() {
 
   const createReservation = useCreateReservation();
   const respondReservation = useRespondReservation();
+  const updateReservation = useUpdateReservation();
   const cancelReservation = useCancelReservation();
 
   // Build reservation map by resource and date
@@ -356,14 +455,16 @@ export default function ResourceReservation() {
             size="small"
           >
             <Tab value="calendar">Calendar</Tab>
-            <Tab value="approvals">
-              Approvals
-              {pendingApprovals.length > 0 && (
-                <Badge color="danger" size="small" style={{ marginLeft: 4 }}>
-                  {pendingApprovals.length}
-                </Badge>
-              )}
-            </Tab>
+            {requiresApproval && (
+              <Tab value="approvals">
+                Approvals
+                {pendingApprovals.length > 0 && (
+                  <Badge color="danger" size="small" style={{ marginLeft: 4 }}>
+                    {pendingApprovals.length}
+                  </Badge>
+                )}
+              </Tab>
+            )}
             <Tab value="my-requests">My Requests</Tab>
           </TabList>
         </div>
@@ -455,7 +556,7 @@ export default function ResourceReservation() {
                   selectedResource?.id === resource.id ? "primary" : "subtle"
                 }
                 size="small"
-                onClick={() => setSelectedResource(resource)}
+                onClick={() => setSelectedResourceId(resource.id)}
                 icon={
                   <Avatar
                     image={{ src: resource.avatar || undefined }}
@@ -553,6 +654,7 @@ export default function ResourceReservation() {
                     ...pendingReservations,
                   ].reduce((sum, r) => sum + r.hours, 0);
                   const availableHours = workHoursPerDay - totalReservedHours;
+                  const isOverbooked = totalReservedHours > workHoursPerDay;
                   const holiday = holidayMap[dateStr];
                   const isToday = formatLocalDate(new Date()) === dateStr;
 
@@ -560,7 +662,7 @@ export default function ResourceReservation() {
                     <div
                       key={dateStr}
                       onClick={() => {
-                        if (!holiday && availableHours > 0) {
+                        if (!holiday) {
                           handleCellClick(selectedResource, date);
                         }
                       }}
@@ -578,10 +680,7 @@ export default function ResourceReservation() {
                           : isWeekend
                             ? tokens.colorNeutralBackground3
                             : tokens.colorNeutralBackground1,
-                        cursor:
-                          holiday || availableHours <= 0
-                            ? "default"
-                            : "pointer",
+                        cursor: holiday ? "default" : "pointer",
                         position: "relative",
                       }}
                     >
@@ -619,16 +718,25 @@ export default function ResourceReservation() {
                         <div
                           style={{
                             fontSize: 10,
-                            color:
-                              availableHours <= 0
-                                ? tokens.colorPaletteRedForeground1
+                            color: isOverbooked
+                              ? tokens.colorPaletteRedForeground1
+                              : availableHours <= 0
+                                ? tokens.colorPaletteYellowForeground1
                                 : tokens.colorNeutralForeground3,
                             marginBottom: 4,
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 2,
                           }}
                         >
-                          {availableHours > 0
-                            ? `${availableHours}h available`
-                            : "Fully booked"}
+                          {isOverbooked && (
+                            <Warning16Regular style={{ fontSize: 12 }} />
+                          )}
+                          {isOverbooked
+                            ? `${totalReservedHours - workHoursPerDay}h over limit`
+                            : availableHours > 0
+                              ? `${availableHours}h available`
+                              : "Fully booked"}
                         </div>
                       )}
 
@@ -646,8 +754,10 @@ export default function ResourceReservation() {
                           <div
                             style={{
                               height: "100%",
-                              width: `${(totalReservedHours / workHoursPerDay) * 100}%`,
-                              background: tokens.colorPaletteGreenBackground3,
+                              width: `${Math.min((totalReservedHours / workHoursPerDay) * 100, 100)}%`,
+                              background: isOverbooked
+                                ? tokens.colorPaletteRedBackground3
+                                : tokens.colorPaletteGreenBackground3,
                               borderRadius: 2,
                             }}
                           />
@@ -666,10 +776,14 @@ export default function ResourceReservation() {
                           (res) => (
                             <Tooltip
                               key={res.id}
-                              content={`${res.status === "PENDING" ? "[PENDING] " : ""}${getEmployeeName(res.requester)} - ${res.title} (${res.hours}h)`}
+                              content={`${res.status === "PENDING" ? "[PENDING] " : ""}${getEmployeeName(res.requester)} - ${res.title} (${res.hours}h) - Click for details`}
                               relationship="description"
                             >
                               <div
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setViewReservation(res);
+                                }}
                                 style={{
                                   display: "flex",
                                   alignItems: "center",
@@ -682,6 +796,7 @@ export default function ResourceReservation() {
                                   borderRadius: 4,
                                   fontSize: 10,
                                   opacity: res.status === "PENDING" ? 0.8 : 1,
+                                  cursor: "pointer",
                                 }}
                               >
                                 <Avatar
@@ -698,8 +813,9 @@ export default function ResourceReservation() {
                         )}
                       </div>
 
-                      {/* Owner avatar when no reservations */}
-                      {dayReservations.length === 0 &&
+                      {/* Owner avatar when no active reservations */}
+                      {approvedReservations.length === 0 &&
+                        pendingReservations.length === 0 &&
                         !holiday &&
                         selectedResource.managers[0] && (
                           <div
@@ -752,8 +868,8 @@ export default function ResourceReservation() {
         </>
       )}
 
-      {/* Approvals Tab */}
-      {activeTab === "approvals" && (
+      {/* Approvals Tab - only shown when approval is required */}
+      {activeTab === "approvals" && requiresApproval && (
         <div style={{ flex: 1, overflow: "auto", padding: 16 }}>
           <h3 style={{ margin: "0 0 16px", fontWeight: 600 }}>
             Pending Approvals
@@ -1218,6 +1334,372 @@ export default function ResourceReservation() {
                 {createReservation.isPending
                   ? "Submitting..."
                   : "Submit Request"}
+              </Button>
+            </DialogActions>
+          </DialogBody>
+        </DialogSurface>
+      </Dialog>
+
+      {/* View Reservation Details Dialog */}
+      <Dialog
+        open={!!viewReservation}
+        onOpenChange={(_, d) => {
+          if (!d.open) {
+            setViewReservation(null);
+            setIsEditing(false);
+          }
+        }}
+      >
+        <DialogSurface style={{ maxWidth: 500 }}>
+          <DialogBody>
+            <DialogTitle>
+              {isEditing ? "Edit Reservation" : "Reservation Details"}
+            </DialogTitle>
+            <DialogContent>
+              {viewReservation && (
+                <div
+                  style={{ display: "flex", flexDirection: "column", gap: 16 }}
+                >
+                  {/* Status Badge */}
+                  <div>{getStatusBadge(viewReservation.status)}</div>
+
+                  {/* Title & Description - Editable */}
+                  {isEditing ? (
+                    <>
+                      <Field label="Title" required>
+                        <Input
+                          value={editForm.title}
+                          onChange={(_, d) =>
+                            setEditForm((f) => ({ ...f, title: d.value }))
+                          }
+                        />
+                      </Field>
+                      <Field label="Description">
+                        <Textarea
+                          value={editForm.description}
+                          onChange={(_, d) =>
+                            setEditForm((f) => ({ ...f, description: d.value }))
+                          }
+                          rows={3}
+                        />
+                      </Field>
+                      <Field label="Hours" required>
+                        <Input
+                          type="number"
+                          min={0.5}
+                          step={0.5}
+                          value={editForm.hours.toString()}
+                          onChange={(_, d) =>
+                            setEditForm((f) => ({
+                              ...f,
+                              hours: parseFloat(d.value) || 0,
+                            }))
+                          }
+                        />
+                      </Field>
+                    </>
+                  ) : (
+                    <div>
+                      <div
+                        style={{
+                          fontWeight: 600,
+                          fontSize: 18,
+                          marginBottom: 4,
+                        }}
+                      >
+                        {viewReservation.title}
+                      </div>
+                      {viewReservation.description && (
+                        <div
+                          style={{
+                            fontSize: 13,
+                            color: tokens.colorNeutralForeground3,
+                          }}
+                        >
+                          {viewReservation.description}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Resource Info */}
+                  <div
+                    style={{
+                      padding: 12,
+                      background: tokens.colorNeutralBackground3,
+                      borderRadius: 8,
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 12,
+                    }}
+                  >
+                    <div
+                      style={{ display: "flex", alignItems: "center", gap: 8 }}
+                    >
+                      <Avatar
+                        image={{
+                          src: getEmployeeAvatar(
+                            viewReservation.resourceEmployee,
+                          ),
+                        }}
+                        name={getEmployeeName(viewReservation.resourceEmployee)}
+                        size={32}
+                      />
+                      <div>
+                        <div
+                          style={{
+                            fontSize: 12,
+                            color: tokens.colorNeutralForeground3,
+                          }}
+                        >
+                          Resource
+                        </div>
+                        <div style={{ fontWeight: 500 }}>
+                          {getEmployeeName(viewReservation.resourceEmployee)}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div
+                      style={{ display: "flex", alignItems: "center", gap: 8 }}
+                    >
+                      <Avatar
+                        image={{
+                          src: getEmployeeAvatar(viewReservation.requester),
+                        }}
+                        name={getEmployeeName(viewReservation.requester)}
+                        size={32}
+                      />
+                      <div>
+                        <div
+                          style={{
+                            fontSize: 12,
+                            color: tokens.colorNeutralForeground3,
+                          }}
+                        >
+                          Requested by
+                        </div>
+                        <div style={{ fontWeight: 500 }}>
+                          {getEmployeeName(viewReservation.requester)}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Date and Hours (Hours only shown in view mode) */}
+                  <div style={{ display: "flex", gap: 24 }}>
+                    <div>
+                      <div
+                        style={{
+                          fontSize: 12,
+                          color: tokens.colorNeutralForeground3,
+                        }}
+                      >
+                        Date
+                      </div>
+                      <div style={{ fontWeight: 500 }}>
+                        {new Date(viewReservation.date).toLocaleDateString(
+                          "en-US",
+                          {
+                            weekday: "long",
+                            year: "numeric",
+                            month: "long",
+                            day: "numeric",
+                          },
+                        )}
+                      </div>
+                    </div>
+                    {!isEditing && (
+                      <div>
+                        <div
+                          style={{
+                            fontSize: 12,
+                            color: tokens.colorNeutralForeground3,
+                          }}
+                        >
+                          Hours
+                        </div>
+                        <div
+                          style={{
+                            fontWeight: 500,
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 4,
+                          }}
+                        >
+                          <Clock24Regular style={{ fontSize: 16 }} />
+                          {viewReservation.hours} hours
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Comment if any */}
+                  {viewReservation.comment && (
+                    <div
+                      style={{
+                        padding: 12,
+                        background: tokens.colorNeutralBackground3,
+                        borderRadius: 8,
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: 12,
+                          color: tokens.colorNeutralForeground3,
+                          marginBottom: 4,
+                        }}
+                      >
+                        Response
+                      </div>
+                      <div>{viewReservation.comment}</div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </DialogContent>
+            <DialogActions>
+              {isEditing ? (
+                <>
+                  <Button
+                    appearance="secondary"
+                    onClick={() => setIsEditing(false)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    appearance="primary"
+                    icon={<Save24Regular />}
+                    onClick={async () => {
+                      if (viewReservation) {
+                        await updateReservation.mutateAsync({
+                          id: viewReservation.id,
+                          hours: editForm.hours,
+                          title: editForm.title,
+                          description: editForm.description || undefined,
+                        });
+                        setIsEditing(false);
+                        setViewReservation(null);
+                      }
+                    }}
+                    disabled={
+                      !editForm.title ||
+                      editForm.hours <= 0 ||
+                      updateReservation.isPending
+                    }
+                  >
+                    {updateReservation.isPending ? "Saving..." : "Save"}
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Button
+                    appearance="secondary"
+                    onClick={() => {
+                      setViewReservation(null);
+                      setIsEditing(false);
+                    }}
+                  >
+                    Close
+                  </Button>
+                  {/* Show edit button if user is resource owner or requester */}
+                  {viewReservation &&
+                    (viewReservation.resourceEmployee.user.email ===
+                      user?.email ||
+                      viewReservation.requester.user.email === user?.email) && (
+                      <Button
+                        appearance="secondary"
+                        icon={<Edit24Regular />}
+                        onClick={() => {
+                          setEditForm({
+                            hours: viewReservation.hours,
+                            title: viewReservation.title,
+                            description: viewReservation.description || "",
+                          });
+                          setIsEditing(true);
+                        }}
+                      >
+                        Edit
+                      </Button>
+                    )}
+                  {/* Show cancel button if user is requester or resource owner and status is PENDING or APPROVED */}
+                  {viewReservation &&
+                    (viewReservation.status === "PENDING" ||
+                      viewReservation.status === "APPROVED") &&
+                    (viewReservation.requester.user.email === user?.email ||
+                      viewReservation.resourceEmployee.user.email ===
+                        user?.email) && (
+                      <Button
+                        appearance="primary"
+                        icon={<Dismiss24Regular />}
+                        onClick={() => setConfirmCancel(true)}
+                        disabled={cancelReservation.isPending}
+                      >
+                        Cancel Reservation
+                      </Button>
+                    )}
+                </>
+              )}
+            </DialogActions>
+          </DialogBody>
+        </DialogSurface>
+      </Dialog>
+
+      {/* Confirm Cancel Dialog */}
+      <Dialog
+        open={confirmCancel}
+        onOpenChange={(_, d) => !d.open && setConfirmCancel(false)}
+      >
+        <DialogSurface style={{ maxWidth: 400 }}>
+          <DialogBody>
+            <DialogTitle>Cancel Reservation</DialogTitle>
+            <DialogContent>
+              <p style={{ margin: 0 }}>
+                Are you sure you want to cancel this reservation?
+              </p>
+              {viewReservation && (
+                <div
+                  style={{
+                    marginTop: 12,
+                    padding: 12,
+                    background: tokens.colorNeutralBackground3,
+                    borderRadius: 8,
+                  }}
+                >
+                  <div style={{ fontWeight: 600 }}>{viewReservation.title}</div>
+                  <div
+                    style={{
+                      fontSize: 13,
+                      color: tokens.colorNeutralForeground3,
+                    }}
+                  >
+                    {new Date(viewReservation.date).toLocaleDateString()} -{" "}
+                    {viewReservation.hours} hours
+                  </div>
+                </div>
+              )}
+            </DialogContent>
+            <DialogActions>
+              <Button
+                appearance="secondary"
+                onClick={() => setConfirmCancel(false)}
+              >
+                No, Keep It
+              </Button>
+              <Button
+                appearance="primary"
+                icon={<Dismiss24Regular />}
+                onClick={() => {
+                  if (viewReservation) {
+                    cancelReservation.mutate(viewReservation.id);
+                    setConfirmCancel(false);
+                    setViewReservation(null);
+                    setIsEditing(false);
+                  }
+                }}
+                disabled={cancelReservation.isPending}
+              >
+                {cancelReservation.isPending ? "Cancelling..." : "Yes, Cancel"}
               </Button>
             </DialogActions>
           </DialogBody>

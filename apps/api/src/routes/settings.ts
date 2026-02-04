@@ -73,6 +73,7 @@ export const settingsRoutes = new Elysia({ prefix: "/api/settings" })
         fiscalYearStartMonth: t.Optional(t.Number({ minimum: 1, maximum: 12 })),
         workHoursPerDay: t.Optional(t.Number({ minimum: 1, maximum: 24 })),
         complaintChatEnabled: t.Optional(t.Boolean()),
+        reservationRequiresApproval: t.Optional(t.Boolean()),
       }),
       detail: {
         tags: ["Settings"],

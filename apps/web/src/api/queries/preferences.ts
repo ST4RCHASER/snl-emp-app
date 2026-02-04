@@ -34,6 +34,20 @@ export interface TeamCalendarSettings {
   viewMode?: "day" | "week" | "month";
 }
 
+export interface ResourceReservationSettings {
+  viewMode?: "day" | "week" | "month";
+  selectedResourceId?: string | null;
+  activeTab?: string;
+}
+
+export interface LeaveManagementSettings {
+  activeTab?: string;
+  pendingViewMode?: "list" | "calendar";
+  allLeavesViewMode?: "list" | "calendar";
+  selectedEmployeeId?: string | null;
+  selectedEmployeeName?: string | null;
+}
+
 export interface PreferencesUpdateData {
   theme?: "system" | "light" | "dark";
   accentColor?: string;
@@ -54,6 +68,8 @@ export interface PreferencesUpdateData {
   appSizes?: AppSizes | null;
   // App-specific settings
   teamCalendarSettings?: TeamCalendarSettings | null;
+  resourceReservationSettings?: ResourceReservationSettings | null;
+  leaveManagementSettings?: LeaveManagementSettings | null;
 }
 
 export function useUpdatePreferences() {
