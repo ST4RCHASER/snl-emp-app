@@ -28,7 +28,8 @@ export const leaveBalanceQueries = {
           query: { year: year?.toString() },
         });
         if (error) throw error;
-        return data as LeaveBalance[];
+        if (!Array.isArray(data)) throw new Error("Unexpected response");
+        return data as unknown as LeaveBalance[];
       },
     }),
 
@@ -40,7 +41,8 @@ export const leaveBalanceQueries = {
           .employee({ employeeId })
           .get({ query: { year: year?.toString() } });
         if (error) throw error;
-        return data as LeaveBalance[];
+        if (!Array.isArray(data)) throw new Error("Unexpected response");
+        return data as unknown as LeaveBalance[];
       },
       enabled: !!employeeId,
     }),
@@ -82,8 +84,12 @@ export function useSetEmployeeBalance() {
     },
     onSuccess: (_, { employeeId }) => {
       queryClient.invalidateQueries({ queryKey: ["leave-balances"] });
-      queryClient.invalidateQueries({ queryKey: ["leave-balances", "employee", employeeId] });
-      logAction("set_leave_balance", "form", "Updated employee leave balance", { employeeId });
+      queryClient.invalidateQueries({
+        queryKey: ["leave-balances", "employee", employeeId],
+      });
+      logAction("set_leave_balance", "form", "Updated employee leave balance", {
+        employeeId,
+      });
     },
   });
 }
@@ -140,8 +146,15 @@ export function useResetEmployeeBalance() {
     },
     onSuccess: (_, { employeeId }) => {
       queryClient.invalidateQueries({ queryKey: ["leave-balances"] });
-      queryClient.invalidateQueries({ queryKey: ["leave-balances", "employee", employeeId] });
-      logAction("reset_leave_balance", "form", "Reset employee leave balance to default", { employeeId });
+      queryClient.invalidateQueries({
+        queryKey: ["leave-balances", "employee", employeeId],
+      });
+      logAction(
+        "reset_leave_balance",
+        "form",
+        "Reset employee leave balance to default",
+        { employeeId },
+      );
     },
   });
 }

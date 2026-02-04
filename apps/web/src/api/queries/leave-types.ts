@@ -35,7 +35,8 @@ export const leaveTypeQueries = {
           query: { includeInactive: includeInactive ? "true" : undefined },
         });
         if (error) throw error;
-        return data as LeaveTypeConfig[];
+        if (!Array.isArray(data)) throw new Error("Unexpected response");
+        return data as unknown as LeaveTypeConfig[];
       },
     }),
 
@@ -45,7 +46,9 @@ export const leaveTypeQueries = {
       queryFn: async () => {
         const { data, error } = await api.api["leave-types"]({ id }).get();
         if (error) throw error;
-        return data as LeaveTypeConfig;
+        if (!data || typeof data !== "object")
+          throw new Error("Unexpected response");
+        return data as unknown as LeaveTypeConfig;
       },
       enabled: !!id,
     }),
@@ -75,10 +78,15 @@ export function useCreateLeaveType() {
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["leave-types"] });
-      logAction("create_leave_type", "form", `Created leave type: ${variables.name}`, {
-        name: variables.name,
-        code: variables.code,
-      });
+      logAction(
+        "create_leave_type",
+        "form",
+        `Created leave type: ${variables.name}`,
+        {
+          name: variables.name,
+          code: variables.code,
+        },
+      );
     },
   });
 }
@@ -107,14 +115,18 @@ export function useUpdateLeaveType() {
       order?: number;
       isActive?: boolean;
     }) => {
-      const { data: result, error } = await api.api["leave-types"]({ id }).patch(data);
+      const { data: result, error } = await api.api["leave-types"]({
+        id,
+      }).patch(data);
       if (error) throw error;
       return result;
     },
     onSuccess: (_, { id }) => {
       queryClient.invalidateQueries({ queryKey: ["leave-types"] });
       queryClient.invalidateQueries({ queryKey: ["leave-types", id] });
-      logAction("update_leave_type", "form", "Updated leave type", { leaveTypeId: id });
+      logAction("update_leave_type", "form", "Updated leave type", {
+        leaveTypeId: id,
+      });
     },
   });
 }
@@ -130,7 +142,9 @@ export function useDeleteLeaveType() {
     },
     onSuccess: (_, id) => {
       queryClient.invalidateQueries({ queryKey: ["leave-types"] });
-      logAction("delete_leave_type", "form", "Deactivated leave type", { leaveTypeId: id });
+      logAction("delete_leave_type", "form", "Deactivated leave type", {
+        leaveTypeId: id,
+      });
     },
   });
 }
@@ -140,7 +154,9 @@ export function useReorderLeaveTypes() {
 
   return useMutation({
     mutationFn: async (items: { id: string }[]) => {
-      const { data, error } = await api.api["leave-types"].reorder.post({ items });
+      const { data, error } = await api.api["leave-types"].reorder.post({
+        items,
+      });
       if (error) throw error;
       return data;
     },

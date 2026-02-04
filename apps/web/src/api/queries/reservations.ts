@@ -80,7 +80,8 @@ export const reservationQueries = {
             query: { startDate, endDate },
           });
         if (error) throw error;
-        return data as Reservation[];
+        if (!Array.isArray(data)) throw new Error("Unexpected response");
+        return data as unknown as Reservation[];
       },
       enabled: !!resourceId,
     }),
@@ -93,7 +94,8 @@ export const reservationQueries = {
           query: { status },
         });
         if (error) throw error;
-        return data as Reservation[];
+        if (!Array.isArray(data)) throw new Error("Unexpected response");
+        return data as unknown as Reservation[];
       },
     }),
 
@@ -102,7 +104,8 @@ export const reservationQueries = {
     queryFn: async () => {
       const { data, error } = await api.api.reservations["my-requests"].get();
       if (error) throw error;
-      return data as Reservation[];
+      if (!Array.isArray(data)) throw new Error("Unexpected response");
+      return data as unknown as Reservation[];
     },
   }),
 };
