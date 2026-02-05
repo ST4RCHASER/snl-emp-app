@@ -201,6 +201,20 @@ export const calendarRoutes = new Elysia({ prefix: "/api/calendar" })
         // Cache for organizer calendars to avoid duplicate fetches
         const organizerCalendarCache = new Map<string, GoogleCalendarEvent[]>();
 
+        // Pre-fetch all Synora users from database once (not per event)
+        const allSynoraUsers = await prisma.user.findMany({
+          where: {
+            OR: COMPANY_DOMAINS.map((domain) => ({
+              email: { endsWith: `@${domain}` },
+            })),
+          },
+          select: { email: true },
+          take: 100,
+        });
+        console.log(
+          `[Calendar] Found ${allSynoraUsers.length} Synora users in DB: ${allSynoraUsers.map((u) => u.email).join(", ")}`,
+        );
+
         for (const roomEvent of roomEvents) {
           const startTime =
             roomEvent.start?.dateTime || roomEvent.start?.date || "";
@@ -224,19 +238,19 @@ export const calendarRoutes = new Elysia({ prefix: "/api/calendar" })
           }
 
           // Build list of emails to try fetching calendar from
-          // Priority: 1. Current user, 2. Internal organizer, 3. Internal attendees, 4. All Synora users
+          // Priority: 1. Current user, 2. Internal organizer, 3. Internal attendees from room event, 4. All Synora users from DB
           const emailsToTry: string[] = [];
 
           // 1. Always try current user first (most likely to have the event if they're viewing)
           emailsToTry.push(user.email);
 
-          // 2. If organizer is internal, add them
+          // 2. If organizer is internal, add them (they might not be in our DB though)
           const isOrganizerInternal = isInternalEmail(organizerEmail);
           if (isOrganizerInternal && !emailsToTry.includes(organizerEmail)) {
             emailsToTry.push(organizerEmail);
           }
 
-          // 3. Check for internal attendees from room event (if available)
+          // 3. Check for internal attendees from room event (HIGH PRIORITY - these are actual attendees)
           const internalAttendees = (roomEvent.attendees || [])
             .filter((a) => {
               const email = a.email || "";
@@ -249,29 +263,24 @@ export const calendarRoutes = new Elysia({ prefix: "/api/calendar" })
             .map((a) => a.email!)
             .filter(Boolean);
 
+          // Add internal attendees right after organizer (before general DB users)
           for (const email of internalAttendees) {
             if (!emailsToTry.includes(email)) {
               emailsToTry.push(email);
             }
           }
 
-          // 4. Fetch all Synora users from database as fallback
-          // (room events often don't include attendee lists)
-          const allSynoraUsers = await prisma.user.findMany({
-            where: {
-              OR: COMPANY_DOMAINS.map((domain) => ({
-                email: { endsWith: `@${domain}` },
-              })),
-            },
-            select: { email: true },
-            take: 50,
-          });
-
+          // 4. Add all Synora users from pre-fetched list
+          // (room events typically don't include attendee lists, so we need to check all users)
           for (const u of allSynoraUsers) {
             if (!emailsToTry.includes(u.email)) {
               emailsToTry.push(u.email);
             }
           }
+
+          console.log(
+            `[Room Event] Emails to try (${emailsToTry.length}): [${emailsToTry.slice(0, 5).join(", ")}${emailsToTry.length > 5 ? ", ..." : ""}]`,
+          );
 
           // Log all attendee emails for debugging
           const allAttendeeEmails = (roomEvent.attendees || [])
@@ -280,6 +289,51 @@ export const calendarRoutes = new Elysia({ prefix: "/api/calendar" })
           console.log(
             `[Room Event] ${roomEvent.id}: organizer=${organizerEmail}, isInternal=${isOrganizerInternal}, emailsToTry=${emailsToTry.join(", ") || "none"}, roomSummary="${roomEvent.summary}", allAttendees=[${allAttendeeEmails.join(", ")}]`,
           );
+
+          // Helper to fetch a calendar by email using current user's token (for shared calendars)
+          const fetchCalendarByEmail = async (
+            email: string,
+          ): Promise<GoogleCalendarEvent[] | null> => {
+            // Check cache first
+            const cached = organizerCalendarCache.get(email);
+            if (cached) return cached;
+
+            // Use the current user's token to access the organizer's calendar (if shared)
+            try {
+              const response = await fetch(
+                `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(email)}/events?` +
+                  new URLSearchParams({
+                    timeMin,
+                    timeMax,
+                    singleEvents: "true",
+                    orderBy: "startTime",
+                    maxResults: "100",
+                  }),
+                { headers: { Authorization: `Bearer ${currentAccessToken}` } },
+              );
+
+              if (response.ok) {
+                const data = await response.json();
+                const events = (data.items || []) as GoogleCalendarEvent[];
+                organizerCalendarCache.set(email, events);
+                console.log(
+                  `[Calendar] Fetched ${events.length} events from ${email}'s calendar (via current user's token)`,
+                );
+                return events;
+              } else {
+                console.log(
+                  `[Calendar] Failed to fetch ${email}'s calendar via current user: ${response.status}`,
+                );
+              }
+            } catch (err) {
+              console.log(
+                `[Calendar] Error fetching ${email}'s calendar via current user:`,
+                err,
+              );
+            }
+
+            return null;
+          };
 
           // Helper to fetch a user's calendar using their own stored access token
           const fetchUserOwnCalendar = async (
@@ -349,17 +403,17 @@ export const calendarRoutes = new Elysia({ prefix: "/api/calendar" })
                 const events = (data.items || []) as GoogleCalendarEvent[];
                 organizerCalendarCache.set(email, events);
                 console.log(
-                  `[Calendar] Fetched ${events.length} events from ${email}'s own calendar`,
+                  `[Calendar] Fetched ${events.length} events from ${email}'s own calendar (via their token)`,
                 );
                 return events;
               } else {
                 console.log(
-                  `[Calendar] Failed to fetch ${email}'s calendar: ${response.status}`,
+                  `[Calendar] Failed to fetch ${email}'s calendar via their token: ${response.status}`,
                 );
               }
             } catch (err) {
               console.log(
-                `[Calendar] Error fetching ${email}'s calendar:`,
+                `[Calendar] Error fetching ${email}'s calendar via their token:`,
                 err,
               );
             }
@@ -369,16 +423,21 @@ export const calendarRoutes = new Elysia({ prefix: "/api/calendar" })
 
           // Try to fetch calendar from each internal email until we get event details
           let matchedEvent: GoogleCalendarEvent | undefined;
+          let triedCount = 0;
+          const maxTries = 20; // Limit to first 20 users to avoid too many API calls
 
-          for (const emailToFetch of emailsToTry) {
-            const calendarEvents = await fetchUserOwnCalendar(emailToFetch);
-
-            // Find matching event by time (with 1 minute tolerance for timezone differences)
-            if (calendarEvents) {
+          // STEP 1: If organizer is internal, try to fetch their calendar directly first
+          // (using current user's token to access shared calendar)
+          if (isOrganizerInternal) {
+            console.log(
+              `[Calendar] Step 1: Trying to fetch internal organizer ${organizerEmail}'s calendar directly`,
+            );
+            const organizerEvents = await fetchCalendarByEmail(organizerEmail);
+            if (organizerEvents && organizerEvents.length > 0) {
               const roomStartTime = new Date(startTime).getTime();
               const roomEndTime = new Date(endTime).getTime();
 
-              matchedEvent = calendarEvents.find((calEvent) => {
+              matchedEvent = organizerEvents.find((calEvent) => {
                 const calStart =
                   calEvent.start?.dateTime || calEvent.start?.date || "";
                 const calEnd =
@@ -386,7 +445,6 @@ export const calendarRoutes = new Elysia({ prefix: "/api/calendar" })
                 const calStartTime = new Date(calStart).getTime();
                 const calEndTime = new Date(calEnd).getTime();
 
-                // Match within 1 minute tolerance
                 const startMatch =
                   Math.abs(calStartTime - roomStartTime) < 60000;
                 const endMatch = Math.abs(calEndTime - roomEndTime) < 60000;
@@ -394,22 +452,101 @@ export const calendarRoutes = new Elysia({ prefix: "/api/calendar" })
                 return startMatch && endMatch;
               });
 
-              if (matchedEvent) {
-                console.log(
-                  `[Match] Found event "${matchedEvent.summary}" from ${emailToFetch}`,
-                );
-              }
-
-              // If we found a match with good details (not just "Busy"), stop searching
               if (
                 matchedEvent &&
                 matchedEvent.summary &&
                 matchedEvent.summary !== "Busy"
               ) {
-                break;
+                console.log(
+                  `[Match] Found event "${matchedEvent.summary}" from organizer ${organizerEmail} directly`,
+                );
+              } else {
+                matchedEvent = undefined;
               }
             }
           }
+
+          // STEP 2: If no match yet, try fetching from DB users
+          if (!matchedEvent) {
+            console.log(
+              `[Calendar] Step 2: Trying to fetch from DB users (${emailsToTry.length} candidates)`,
+            );
+
+            for (const emailToFetch of emailsToTry) {
+              if (triedCount >= maxTries) {
+                console.log(
+                  `[Calendar] Reached max tries (${maxTries}), stopping search`,
+                );
+                break;
+              }
+
+              console.log(
+                `[Calendar] Trying to fetch calendar for: ${emailToFetch}`,
+              );
+              const calendarEvents = await fetchUserOwnCalendar(emailToFetch);
+              if (calendarEvents) {
+                triedCount++;
+                console.log(
+                  `[Calendar] Successfully fetched ${calendarEvents.length} events from ${emailToFetch} (try ${triedCount}/${maxTries})`,
+                );
+              }
+
+              // Find matching event by time (with 1 minute tolerance for timezone differences)
+              if (calendarEvents && calendarEvents.length > 0) {
+                const roomStartTime = new Date(startTime).getTime();
+                const roomEndTime = new Date(endTime).getTime();
+
+                // Log what we're looking for
+                console.log(
+                  `[Calendar] Searching in ${emailToFetch}'s ${calendarEvents.length} events for time ${startTime} - ${endTime}`,
+                );
+
+                matchedEvent = calendarEvents.find((calEvent) => {
+                  const calStart =
+                    calEvent.start?.dateTime || calEvent.start?.date || "";
+                  const calEnd =
+                    calEvent.end?.dateTime || calEvent.end?.date || "";
+                  const calStartTime = new Date(calStart).getTime();
+                  const calEndTime = new Date(calEnd).getTime();
+
+                  // Match within 1 minute tolerance
+                  const startMatch =
+                    Math.abs(calStartTime - roomStartTime) < 60000;
+                  const endMatch = Math.abs(calEndTime - roomEndTime) < 60000;
+
+                  if (startMatch && endMatch) {
+                    console.log(
+                      `[Calendar] Time match: "${calEvent.summary}" at ${calStart} - ${calEnd}`,
+                    );
+                  }
+
+                  return startMatch && endMatch;
+                });
+
+                if (matchedEvent) {
+                  console.log(
+                    `[Match] Found event "${matchedEvent.summary}" from ${emailToFetch}, organizer: ${matchedEvent.organizer?.email}, attendees: ${(matchedEvent.attendees || []).map((a) => a.email).join(", ")}`,
+                  );
+
+                  // If we found a match with good details (not just "Busy" or empty), stop searching
+                  if (matchedEvent.summary && matchedEvent.summary !== "Busy") {
+                    console.log(`[Match] Good match found! Stopping search.`);
+                    break;
+                  } else {
+                    console.log(
+                      `[Match] Event has no good summary, continuing search...`,
+                    );
+                    matchedEvent = undefined; // Reset to continue searching
+                  }
+                }
+              }
+            }
+          }
+
+          // Log final result for this room event
+          console.log(
+            `[Result] Room event ${roomEvent.id}: matched=${!!matchedEvent}, summary="${matchedEvent?.summary || roomEvent.summary}"`,
+          );
 
           // Use matched event details or fall back to room event
           const sourceEvent = matchedEvent || roomEvent;
