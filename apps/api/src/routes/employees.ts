@@ -457,7 +457,7 @@ export const employeeRoutes = new Elysia({ prefix: "/api/employees" })
     },
   )
 
-  // Update user role (DEVELOPER only)
+  // Update user role (ADMIN and DEVELOPER only)
   .put(
     "/:id/role",
     async ({ params: { id }, body, user, set }) => {
@@ -466,9 +466,18 @@ export const employeeRoutes = new Elysia({ prefix: "/api/employees" })
         return { message: "Unauthorized" };
       }
 
-      if (user.role !== "DEVELOPER") {
+      // Only ADMIN and DEVELOPER can change roles
+      if (user.role !== "ADMIN" && user.role !== "DEVELOPER") {
         set.status = 403;
-        return { message: "Forbidden: Developer role required" };
+        return { message: "Forbidden: Admin or Developer role required" };
+      }
+
+      // ADMIN cannot assign DEVELOPER role
+      if (user.role === "ADMIN" && body.role === "DEVELOPER") {
+        set.status = 403;
+        return {
+          message: "Forbidden: Only Developer can assign Developer role",
+        };
       }
 
       const employee = await prisma.employee.findUnique({
@@ -504,12 +513,13 @@ export const employeeRoutes = new Elysia({ prefix: "/api/employees" })
           t.Literal("EMPLOYEE"),
           t.Literal("HR"),
           t.Literal("MANAGEMENT"),
+          t.Literal("ADMIN"),
           t.Literal("DEVELOPER"),
         ]),
       }),
       detail: {
         tags: ["Employees"],
-        summary: "Update user role (Developer only)",
+        summary: "Update user role (Admin/Developer only)",
       },
     },
   );

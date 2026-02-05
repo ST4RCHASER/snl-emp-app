@@ -15,14 +15,25 @@ export function isDeveloper(user: Session["user"] | null): boolean {
   return user.role === "DEVELOPER";
 }
 
+export function isAdmin(user: Session["user"] | null): boolean {
+  if (!user) return false;
+  return user.role === "ADMIN" || user.role === "DEVELOPER";
+}
+
 export function isHR(user: Session["user"] | null): boolean {
   if (!user) return false;
-  return user.role === "HR" || user.role === "DEVELOPER";
+  return (
+    user.role === "HR" || user.role === "ADMIN" || user.role === "DEVELOPER"
+  );
 }
 
 export function isManagement(user: Session["user"] | null): boolean {
   if (!user) return false;
-  return user.role === "MANAGEMENT" || user.role === "DEVELOPER";
+  return (
+    user.role === "MANAGEMENT" ||
+    user.role === "ADMIN" ||
+    user.role === "DEVELOPER"
+  );
 }
 
 export function canManageEmployees(user: Session["user"] | null): boolean {

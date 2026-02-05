@@ -108,7 +108,8 @@ export default function ComplaintSystem() {
   const isMobile = useMobile();
 
   const userRole = (user as { role?: string } | undefined)?.role;
-  const isHR = userRole === "HR" || userRole === "DEVELOPER";
+  const isHR =
+    userRole === "HR" || userRole === "ADMIN" || userRole === "DEVELOPER";
 
   // Refresh data when window refresh button is clicked
   const queryKeys = useMemo(() => [["complaints"], ["settings"]], []);

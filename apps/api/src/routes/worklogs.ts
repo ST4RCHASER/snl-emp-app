@@ -58,9 +58,11 @@ export const workLogRoutes = new Elysia({ prefix: "/api/worklogs" })
 
       const whereClause: {
         employeeId: string;
+        isDeleted: boolean;
         date?: { gte?: Date; lte?: Date };
       } = {
         employeeId: employee.id,
+        isDeleted: false,
       };
 
       // Parse date filters
@@ -235,7 +237,10 @@ export const workLogRoutes = new Elysia({ prefix: "/api/worklogs" })
 
       // Only owner or manager can edit
       const isOwner = existing.employeeId === employee.id;
-      const isManager = user.role === "MANAGEMENT" || user.role === "DEVELOPER";
+      const isManager =
+        user.role === "MANAGEMENT" ||
+        user.role === "ADMIN" ||
+        user.role === "DEVELOPER";
 
       if (!isOwner && !isManager) {
         set.status = 403;
@@ -320,7 +325,10 @@ export const workLogRoutes = new Elysia({ prefix: "/api/worklogs" })
 
       // Only owner or manager can delete
       const isOwner = existing.employeeId === employee.id;
-      const isManager = user.role === "MANAGEMENT" || user.role === "DEVELOPER";
+      const isManager =
+        user.role === "MANAGEMENT" ||
+        user.role === "ADMIN" ||
+        user.role === "DEVELOPER";
 
       if (!isOwner && !isManager) {
         set.status = 403;
@@ -390,7 +398,10 @@ export const workLogRoutes = new Elysia({ prefix: "/api/worklogs" })
 
       // Check access - owner or manager
       const isOwner = workLog.employeeId === employee.id;
-      const isManager = user.role === "MANAGEMENT" || user.role === "DEVELOPER";
+      const isManager =
+        user.role === "MANAGEMENT" ||
+        user.role === "ADMIN" ||
+        user.role === "DEVELOPER";
 
       if (!isOwner && !isManager) {
         set.status = 403;
@@ -426,7 +437,11 @@ export const workLogRoutes = new Elysia({ prefix: "/api/worklogs" })
         return { message: "Unauthorized" };
       }
 
-      if (user.role !== "MANAGEMENT" && user.role !== "DEVELOPER") {
+      if (
+        user.role !== "MANAGEMENT" &&
+        user.role !== "ADMIN" &&
+        user.role !== "DEVELOPER"
+      ) {
         set.status = 403;
         return { message: "Forbidden: Management role required" };
       }
@@ -466,7 +481,11 @@ export const workLogRoutes = new Elysia({ prefix: "/api/worklogs" })
         return { message: "Unauthorized" };
       }
 
-      if (user.role !== "MANAGEMENT" && user.role !== "DEVELOPER") {
+      if (
+        user.role !== "MANAGEMENT" &&
+        user.role !== "ADMIN" &&
+        user.role !== "DEVELOPER"
+      ) {
         set.status = 403;
         return { message: "Forbidden: Management role required" };
       }
@@ -489,9 +508,11 @@ export const workLogRoutes = new Elysia({ prefix: "/api/worklogs" })
 
       const whereClause: {
         employeeId: string;
+        isDeleted: boolean;
         date?: { gte?: Date; lte?: Date };
       } = {
         employeeId,
+        isDeleted: false,
       };
 
       if (query.startDate || query.endDate) {
@@ -541,7 +562,11 @@ export const workLogRoutes = new Elysia({ prefix: "/api/worklogs" })
         return { message: "Unauthorized" };
       }
 
-      if (user.role !== "MANAGEMENT" && user.role !== "DEVELOPER") {
+      if (
+        user.role !== "MANAGEMENT" &&
+        user.role !== "ADMIN" &&
+        user.role !== "DEVELOPER"
+      ) {
         set.status = 403;
         return { message: "Forbidden: Management role required" };
       }
@@ -623,7 +648,11 @@ export const workLogRoutes = new Elysia({ prefix: "/api/worklogs" })
         return { message: "Unauthorized" };
       }
 
-      if (user.role !== "MANAGEMENT" && user.role !== "DEVELOPER") {
+      if (
+        user.role !== "MANAGEMENT" &&
+        user.role !== "ADMIN" &&
+        user.role !== "DEVELOPER"
+      ) {
         set.status = 403;
         return { message: "Forbidden: Management role required" };
       }

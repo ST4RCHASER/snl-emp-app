@@ -145,13 +145,16 @@ export default function Profile() {
   const employeeData =
     myEmployee && "employeeId" in myEmployee ? myEmployee : null;
 
-  const getRoleBadge = (role: string) => {
+  const getRoleBadge = (role: string | null | undefined) => {
+    // Don't show badge for EMPLOYEE role (default)
+    if (!role || role === "EMPLOYEE") return null;
+
     const colorMap: Record<string, "brand" | "success" | "warning" | "danger"> =
       {
         DEVELOPER: "danger",
+        ADMIN: "danger",
         HR: "warning",
         MANAGEMENT: "success",
-        EMPLOYEE: "brand",
       };
     return (
       <Badge color={colorMap[role] || "brand"} size="large">
@@ -407,9 +410,7 @@ export default function Profile() {
               </div>
             )}
             <div style={{ marginTop: 8 }}>
-              {getRoleBadge(
-                (user as { role?: string } | undefined)?.role || "EMPLOYEE",
-              )}
+              {getRoleBadge((user as { role?: string } | undefined)?.role)}
             </div>
           </div>
           <Button

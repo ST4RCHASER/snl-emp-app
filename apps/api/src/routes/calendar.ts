@@ -17,6 +17,15 @@ const ROOM_NAMES = {
   outer: "Outer Room",
 } as const;
 
+// Company email domains for internal employees
+const COMPANY_DOMAINS = ["synoralab.co", "synoraholdings.co"] as const;
+
+// Helper to check if email is from company domain
+function isInternalEmail(email: string): boolean {
+  const domain = email.split("@")[1]?.toLowerCase();
+  return COMPANY_DOMAINS.some((d) => domain === d);
+}
+
 // Type for Google Calendar event
 interface GoogleCalendarEvent {
   id: string;
@@ -214,47 +223,205 @@ export const calendarRoutes = new Elysia({ prefix: "/api/calendar" })
             continue;
           }
 
-          // Fetch organizer's calendar (use cache if available)
-          let organizerEvents = organizerCalendarCache.get(organizerEmail);
+          // Build list of emails to try fetching calendar from
+          // Priority: 1. Current user, 2. Internal organizer, 3. Internal attendees, 4. All Synora users
+          const emailsToTry: string[] = [];
 
-          if (!organizerEvents) {
-            try {
-              const orgResponse = await fetchCalendarEvents(
-                currentAccessToken,
-                organizerEmail,
+          // 1. Always try current user first (most likely to have the event if they're viewing)
+          emailsToTry.push(user.email);
+
+          // 2. If organizer is internal, add them
+          const isOrganizerInternal = isInternalEmail(organizerEmail);
+          if (isOrganizerInternal && !emailsToTry.includes(organizerEmail)) {
+            emailsToTry.push(organizerEmail);
+          }
+
+          // 3. Check for internal attendees from room event (if available)
+          const internalAttendees = (roomEvent.attendees || [])
+            .filter((a) => {
+              const email = a.email || "";
+              return (
+                !a.resource &&
+                !email.includes("resource.calendar") &&
+                isInternalEmail(email)
               );
-              if (orgResponse.ok) {
-                const orgData = await orgResponse.json();
-                organizerEvents = (orgData.items ||
-                  []) as GoogleCalendarEvent[];
-                organizerCalendarCache.set(organizerEmail, organizerEvents);
-              }
-            } catch (err) {
-              // If we can't access organizer's calendar, fall back to room event data
-              console.log(`Cannot access calendar for ${organizerEmail}`);
+            })
+            .map((a) => a.email!)
+            .filter(Boolean);
+
+          for (const email of internalAttendees) {
+            if (!emailsToTry.includes(email)) {
+              emailsToTry.push(email);
             }
           }
 
-          // Find matching event in organizer's calendar by time
-          let matchedEvent: GoogleCalendarEvent | undefined;
-          if (organizerEvents) {
-            matchedEvent = organizerEvents.find((orgEvent) => {
-              const orgStart =
-                orgEvent.start?.dateTime || orgEvent.start?.date || "";
-              const orgEnd = orgEvent.end?.dateTime || orgEvent.end?.date || "";
-              return orgStart === startTime && orgEnd === endTime;
+          // 4. Fetch all Synora users from database as fallback
+          // (room events often don't include attendee lists)
+          const allSynoraUsers = await prisma.user.findMany({
+            where: {
+              OR: COMPANY_DOMAINS.map((domain) => ({
+                email: { endsWith: `@${domain}` },
+              })),
+            },
+            select: { email: true },
+            take: 50,
+          });
+
+          for (const u of allSynoraUsers) {
+            if (!emailsToTry.includes(u.email)) {
+              emailsToTry.push(u.email);
+            }
+          }
+
+          // Log all attendee emails for debugging
+          const allAttendeeEmails = (roomEvent.attendees || [])
+            .map((a) => a.email)
+            .filter(Boolean);
+          console.log(
+            `[Room Event] ${roomEvent.id}: organizer=${organizerEmail}, isInternal=${isOrganizerInternal}, emailsToTry=${emailsToTry.join(", ") || "none"}, roomSummary="${roomEvent.summary}", allAttendees=[${allAttendeeEmails.join(", ")}]`,
+          );
+
+          // Helper to fetch a user's calendar using their own stored access token
+          const fetchUserOwnCalendar = async (
+            email: string,
+          ): Promise<GoogleCalendarEvent[] | null> => {
+            // Check cache first
+            const cached = organizerCalendarCache.get(email);
+            if (cached) return cached;
+
+            // Find the user by email and get their access token from our database
+            const userAccount = await prisma.account.findFirst({
+              where: {
+                providerId: "google",
+                user: { email },
+              },
             });
+
+            if (!userAccount || !userAccount.accessToken) {
+              console.log(`[Calendar] No account found in DB for ${email}`);
+              return null;
+            }
+
+            let accessToken = userAccount.accessToken;
+
+            // Check if token needs refresh
+            const tokenExpiry = userAccount.accessTokenExpiresAt;
+            const isTokenExpired =
+              tokenExpiry &&
+              new Date(tokenExpiry).getTime() < Date.now() + 60000;
+
+            if (isTokenExpired && userAccount.refreshToken) {
+              const refreshed = await refreshAccessToken(
+                userAccount.refreshToken,
+              );
+              if (refreshed) {
+                await prisma.account.update({
+                  where: { id: userAccount.id },
+                  data: {
+                    accessToken: refreshed.access_token,
+                    ...(refreshed.expires_in && {
+                      accessTokenExpiresAt: new Date(
+                        Date.now() + refreshed.expires_in * 1000,
+                      ),
+                    }),
+                  },
+                });
+                accessToken = refreshed.access_token;
+              }
+            }
+
+            // Fetch from "primary" calendar (user's own calendar using their token)
+            try {
+              const response = await fetch(
+                `https://www.googleapis.com/calendar/v3/calendars/primary/events?` +
+                  new URLSearchParams({
+                    timeMin,
+                    timeMax,
+                    singleEvents: "true",
+                    orderBy: "startTime",
+                    maxResults: "100",
+                  }),
+                { headers: { Authorization: `Bearer ${accessToken}` } },
+              );
+
+              if (response.ok) {
+                const data = await response.json();
+                const events = (data.items || []) as GoogleCalendarEvent[];
+                organizerCalendarCache.set(email, events);
+                console.log(
+                  `[Calendar] Fetched ${events.length} events from ${email}'s own calendar`,
+                );
+                return events;
+              } else {
+                console.log(
+                  `[Calendar] Failed to fetch ${email}'s calendar: ${response.status}`,
+                );
+              }
+            } catch (err) {
+              console.log(
+                `[Calendar] Error fetching ${email}'s calendar:`,
+                err,
+              );
+            }
+
+            return null;
+          };
+
+          // Try to fetch calendar from each internal email until we get event details
+          let matchedEvent: GoogleCalendarEvent | undefined;
+
+          for (const emailToFetch of emailsToTry) {
+            const calendarEvents = await fetchUserOwnCalendar(emailToFetch);
+
+            // Find matching event by time (with 1 minute tolerance for timezone differences)
+            if (calendarEvents) {
+              const roomStartTime = new Date(startTime).getTime();
+              const roomEndTime = new Date(endTime).getTime();
+
+              matchedEvent = calendarEvents.find((calEvent) => {
+                const calStart =
+                  calEvent.start?.dateTime || calEvent.start?.date || "";
+                const calEnd =
+                  calEvent.end?.dateTime || calEvent.end?.date || "";
+                const calStartTime = new Date(calStart).getTime();
+                const calEndTime = new Date(calEnd).getTime();
+
+                // Match within 1 minute tolerance
+                const startMatch =
+                  Math.abs(calStartTime - roomStartTime) < 60000;
+                const endMatch = Math.abs(calEndTime - roomEndTime) < 60000;
+
+                return startMatch && endMatch;
+              });
+
+              if (matchedEvent) {
+                console.log(
+                  `[Match] Found event "${matchedEvent.summary}" from ${emailToFetch}`,
+                );
+              }
+
+              // If we found a match with good details (not just "Busy"), stop searching
+              if (
+                matchedEvent &&
+                matchedEvent.summary &&
+                matchedEvent.summary !== "Busy"
+              ) {
+                break;
+              }
+            }
           }
 
           // Use matched event details or fall back to room event
           const sourceEvent = matchedEvent || roomEvent;
 
-          // Get organizer name
+          // Get organizer name - prefer the original organizer info
           let organizerName = organizerEmail.split("@")[0];
-          if (sourceEvent.creator?.displayName) {
-            organizerName = sourceEvent.creator.displayName;
-          } else if (sourceEvent.organizer?.displayName) {
+          if (sourceEvent.organizer?.displayName) {
             organizerName = sourceEvent.organizer.displayName;
+          } else if (sourceEvent.creator?.displayName) {
+            organizerName = sourceEvent.creator.displayName;
+          } else if (roomEvent.organizer?.displayName) {
+            organizerName = roomEvent.organizer.displayName;
           }
 
           // Count attendees (exclude resources)

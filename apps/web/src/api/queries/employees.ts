@@ -135,7 +135,7 @@ export function useUpdateUserRole() {
       role,
     }: {
       id: string;
-      role: "EMPLOYEE" | "HR" | "MANAGEMENT" | "DEVELOPER";
+      role: "EMPLOYEE" | "HR" | "MANAGEMENT" | "ADMIN" | "DEVELOPER";
     }) => {
       const { data, error } = await api.api
         .employees({ id })

@@ -139,7 +139,8 @@ export default function ComplaintChat() {
   const complaintId = windowProps?.complaintId;
   const userRole = (user as { role?: string } | undefined)?.role;
   const isHR =
-    windowProps?.isHR ?? (userRole === "HR" || userRole === "DEVELOPER");
+    windowProps?.isHR ??
+    (userRole === "HR" || userRole === "ADMIN" || userRole === "DEVELOPER");
 
   if (!complaintId) {
     return (

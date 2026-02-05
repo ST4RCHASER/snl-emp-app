@@ -14,7 +14,10 @@ export const announcementRoutes = new Elysia({ prefix: "/api/announcements" })
         return { message: "Unauthorized" };
       }
 
-      const isHR = user.role === "HR" || user.role === "DEVELOPER";
+      const isHR =
+        user.role === "HR" ||
+        user.role === "ADMIN" ||
+        user.role === "DEVELOPER";
 
       const announcements = await prisma.announcement.findMany({
         where: isHR ? {} : { isActive: true },

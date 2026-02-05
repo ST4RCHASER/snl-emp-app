@@ -38,8 +38,14 @@ export const leaveRoutes = new Elysia({ prefix: "/api/leaves" })
 
       const employee = await getOrCreateEmployee(user.id);
 
-      const isManager = user.role === "MANAGEMENT" || user.role === "DEVELOPER";
-      const isHR = user.role === "HR" || user.role === "DEVELOPER";
+      const isManager =
+        user.role === "MANAGEMENT" ||
+        user.role === "ADMIN" ||
+        user.role === "DEVELOPER";
+      const isHR =
+        user.role === "HR" ||
+        user.role === "ADMIN" ||
+        user.role === "DEVELOPER";
 
       let whereClause: Record<string, unknown> = {};
 
@@ -365,7 +371,14 @@ export const leaveRoutes = new Elysia({ prefix: "/api/leaves" })
         return { message: "Leave request not found" };
       }
 
-      if (leave.employeeId !== employee.id && user.role !== "DEVELOPER") {
+      // Allow: owner, HR, ADMIN, or DEVELOPER to cancel
+      const canCancel =
+        leave.employeeId === employee.id ||
+        user.role === "HR" ||
+        user.role === "ADMIN" ||
+        user.role === "DEVELOPER";
+
+      if (!canCancel) {
         set.status = 403;
         return { message: "Can only cancel your own leave requests" };
       }

@@ -151,7 +151,8 @@ interface SettingsWindowProps {
 export default function Settings() {
   const { user } = useAuth();
   const userRole = (user as { role?: string } | undefined)?.role;
-  const isHR = userRole === "HR" || userRole === "DEVELOPER";
+  const isHR =
+    userRole === "HR" || userRole === "ADMIN" || userRole === "DEVELOPER";
   const fileInputRef = useRef<HTMLInputElement>(null);
   const windowProps = useWindowProps<SettingsWindowProps>();
   const [activeSection, setActiveSection] = useState<MenuSection>(

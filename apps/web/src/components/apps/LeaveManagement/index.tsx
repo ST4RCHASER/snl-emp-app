@@ -189,8 +189,12 @@ export default function LeaveManagement() {
   };
 
   const userRole = (user as { role?: string } | undefined)?.role;
-  const isManager = userRole === "MANAGEMENT" || userRole === "DEVELOPER";
-  const isHR = userRole === "HR" || userRole === "DEVELOPER";
+  const isManager =
+    userRole === "MANAGEMENT" ||
+    userRole === "ADMIN" ||
+    userRole === "DEVELOPER";
+  const isHR =
+    userRole === "HR" || userRole === "ADMIN" || userRole === "DEVELOPER";
 
   const view =
     activeTab === "pending-approval"
@@ -1024,7 +1028,10 @@ function LeaveCalendarView({
 
   const userRole = (user as { role?: string } | undefined)?.role;
   const canApprove =
-    userRole === "MANAGEMENT" || userRole === "HR" || userRole === "DEVELOPER";
+    userRole === "MANAGEMENT" ||
+    userRole === "HR" ||
+    userRole === "ADMIN" ||
+    userRole === "DEVELOPER";
 
   const approveLeave = useApproveLeave();
   const cancelLeave = useCancelLeave();

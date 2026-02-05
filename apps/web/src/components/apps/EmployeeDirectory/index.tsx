@@ -302,13 +302,16 @@ export default function EmployeeDirectory() {
   const updateUserRole = useUpdateUserRole();
 
   const userRole = (user as { role?: string } | undefined)?.role;
-  const isHR = userRole === "HR" || userRole === "DEVELOPER";
-  const isDeveloper = userRole === "DEVELOPER";
+  const isHR =
+    userRole === "HR" || userRole === "ADMIN" || userRole === "DEVELOPER";
+  const canChangeRoles = userRole === "ADMIN" || userRole === "DEVELOPER";
 
-  // Get employees who can be managers (MANAGEMENT or DEVELOPER role)
+  // Get employees who can be managers (MANAGEMENT, ADMIN, or DEVELOPER role)
   const availableManagers = employees?.filter(
     (emp) =>
-      (emp.user.role === "MANAGEMENT" || emp.user.role === "DEVELOPER") &&
+      (emp.user.role === "MANAGEMENT" ||
+        emp.user.role === "ADMIN" ||
+        emp.user.role === "DEVELOPER") &&
       emp.id !== editingEmployee?.id,
   );
 
@@ -642,8 +645,8 @@ export default function EmployeeDirectory() {
               )}
             </div>
 
-            {/* Role Management - Developer Only */}
-            {isDeveloper && editingEmployee.user.id !== user?.id && (
+            {/* Role Management - Admin and Developer Only */}
+            {canChangeRoles && editingEmployee.user.id !== user?.id && (
               <>
                 <div className={styles.sectionTitle}>Role Management</div>
                 <Field label="User Role" size="small">
@@ -659,7 +662,7 @@ export default function EmployeeDirectory() {
                             | "EMPLOYEE"
                             | "HR"
                             | "MANAGEMENT"
-                            | "DEVELOPER",
+                            | "ADMIN",
                         });
                       }
                     }}
@@ -667,7 +670,7 @@ export default function EmployeeDirectory() {
                     <Option value="EMPLOYEE">EMPLOYEE</Option>
                     <Option value="HR">HR</Option>
                     <Option value="MANAGEMENT">MANAGEMENT</Option>
-                    <Option value="DEVELOPER">DEVELOPER</Option>
+                    <Option value="ADMIN">ADMIN</Option>
                   </Dropdown>
                 </Field>
                 {updateUserRole.isPending && (

@@ -75,7 +75,10 @@ export const complaintRoutes = new Elysia({ prefix: "/api/complaints" })
 
       const employee = await getOrCreateEmployee(user.id);
 
-      const isHR = user.role === "HR" || user.role === "DEVELOPER";
+      const isHR =
+        user.role === "HR" ||
+        user.role === "ADMIN" ||
+        user.role === "DEVELOPER";
 
       let whereClause: Record<string, unknown> = {};
 
@@ -194,7 +197,10 @@ export const complaintRoutes = new Elysia({ prefix: "/api/complaints" })
       }
 
       const isOwner = complaint.employeeId === employee.id;
-      const isHR = user.role === "HR" || user.role === "DEVELOPER";
+      const isHR =
+        user.role === "HR" ||
+        user.role === "ADMIN" ||
+        user.role === "DEVELOPER";
 
       if (!isOwner && !isHR) {
         set.status = 403;
@@ -306,7 +312,10 @@ export const complaintRoutes = new Elysia({ prefix: "/api/complaints" })
       }
 
       const employee = await getOrCreateEmployee(user.id);
-      const isHR = user.role === "HR" || user.role === "DEVELOPER";
+      const isHR =
+        user.role === "HR" ||
+        user.role === "ADMIN" ||
+        user.role === "DEVELOPER";
 
       const complaint = await prisma.complaint.findUnique({
         where: { id },
@@ -543,7 +552,10 @@ export const complaintRoutes = new Elysia({ prefix: "/api/complaints" })
       }
 
       const employee = await getOrCreateEmployee(user.id);
-      const isHR = user.role === "HR" || user.role === "DEVELOPER";
+      const isHR =
+        user.role === "HR" ||
+        user.role === "ADMIN" ||
+        user.role === "DEVELOPER";
 
       const complaint = await prisma.complaint.findUnique({
         where: { id },

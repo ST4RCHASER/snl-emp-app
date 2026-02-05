@@ -87,7 +87,7 @@ export const appRegistry: AppDefinition[] = [
     icon: "PeopleTeam",
     component: lazy(() => import("./TeamWorklog")),
     defaultSize: { width: 1000, height: 650 },
-    roles: ["MANAGEMENT", "DEVELOPER"],
+    roles: ["MANAGEMENT", "ADMIN", "DEVELOPER"],
   },
   {
     id: "audit-logs",
@@ -111,7 +111,7 @@ export const appRegistry: AppDefinition[] = [
     icon: "CalendarPerson",
     component: lazy(() => import("./TeamCalendar")),
     defaultSize: { width: 900, height: 650 },
-    roles: ["MANAGEMENT", "DEVELOPER"],
+    roles: ["MANAGEMENT", "ADMIN", "DEVELOPER"],
   },
   {
     id: "resource-reservation",
@@ -119,7 +119,7 @@ export const appRegistry: AppDefinition[] = [
     icon: "CalendarClock",
     component: lazy(() => import("./ResourceReservation")),
     defaultSize: { width: 1000, height: 700 },
-    roles: ["MANAGEMENT", "DEVELOPER"],
+    roles: ["MANAGEMENT", "ADMIN", "DEVELOPER"],
   },
 ];
 
@@ -130,7 +130,16 @@ export function getAppById(appId: string): AppDefinition | undefined {
 export function getAppsForRole(role: Role): AppDefinition[] {
   return appRegistry.filter((app) => {
     if (!app.roles) return true;
+    // DEVELOPER gets all apps
     if (role === "DEVELOPER") return true;
+    // ADMIN gets all apps except DEVELOPER-only apps (audit-logs, youtube)
+    if (role === "ADMIN") {
+      return (
+        app.roles.includes("ADMIN") ||
+        !app.roles.includes("DEVELOPER") ||
+        app.roles.length > 1
+      );
+    }
     return app.roles.includes(role);
   });
 }
