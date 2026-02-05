@@ -6,6 +6,8 @@ import {
 import { api } from "../client";
 import { logAction } from "./audit";
 
+export type Gender = "MALE" | "FEMALE" | "OTHER" | null;
+
 export interface LeaveTypeConfig {
   id: string;
   name: string;
@@ -18,10 +20,13 @@ export interface LeaveTypeConfig {
   allowCarryover: boolean;
   carryoverMax: number;
   requiresApproval: boolean;
+  requiredWorkDays: number | null;
+  allowedGender: Gender;
   color: string | null;
   icon: string | null;
   order: number;
   isActive: boolean;
+  isDeleted: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -34,6 +39,17 @@ export const leaveTypeQueries = {
         const { data, error } = await api.api["leave-types"].get({
           query: { includeInactive: includeInactive ? "true" : undefined },
         });
+        if (error) throw error;
+        if (!Array.isArray(data)) throw new Error("Unexpected response");
+        return data as unknown as LeaveTypeConfig[];
+      },
+    }),
+
+  eligible: () =>
+    queryOptions({
+      queryKey: ["leave-types", "eligible"],
+      queryFn: async () => {
+        const { data, error } = await api.api["leave-types"].eligible.get();
         if (error) throw error;
         if (!Array.isArray(data)) throw new Error("Unexpected response");
         return data as unknown as LeaveTypeConfig[];
@@ -69,6 +85,8 @@ export function useCreateLeaveType() {
       allowCarryover?: boolean;
       carryoverMax?: number;
       requiresApproval?: boolean;
+      requiredWorkDays?: number | null;
+      allowedGender?: Gender;
       color?: string;
       icon?: string;
     }) => {
@@ -110,6 +128,8 @@ export function useUpdateLeaveType() {
       allowCarryover?: boolean;
       carryoverMax?: number;
       requiresApproval?: boolean;
+      requiredWorkDays?: number | null;
+      allowedGender?: Gender;
       color?: string | null;
       icon?: string | null;
       order?: number;

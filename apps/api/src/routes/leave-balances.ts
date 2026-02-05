@@ -46,19 +46,72 @@ export const leaveBalanceRoutes = new Elysia({ prefix: "/api/leave-balances" })
         return { message: "Unauthorized" };
       }
 
-      const employee = await getOrCreateEmployee(user.id);
+      const employee = await prisma.employee.findUnique({
+        where: { userId: user.id },
+        select: {
+          id: true,
+          gender: true,
+          startWorkDate: true,
+        },
+      });
+
+      if (!employee) {
+        // Create employee if not exists
+        const count = await prisma.employee.count();
+        const newEmployee = await prisma.employee.create({
+          data: {
+            userId: user.id,
+            employeeId: `EMP-${String(count + 1).padStart(5, "0")}`,
+          },
+          select: {
+            id: true,
+            gender: true,
+            startWorkDate: true,
+          },
+        });
+        Object.assign(employee || {}, newEmployee);
+      }
+
+      const employeeData = employee!;
       const year = query.year ? parseInt(query.year) : new Date().getFullYear();
 
-      // Get all active leave types
-      const leaveTypes = await prisma.leaveTypeConfig.findMany({
-        where: { isActive: true },
+      // Calculate days worked
+      let daysWorked = 0;
+      if (employeeData.startWorkDate) {
+        const today = new Date();
+        const startDate = new Date(employeeData.startWorkDate);
+        daysWorked = Math.floor(
+          (today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24),
+        );
+      }
+
+      // Get all active, non-deleted leave types
+      const allLeaveTypes = await prisma.leaveTypeConfig.findMany({
+        where: { isActive: true, isDeleted: false },
         orderBy: { order: "asc" },
+      });
+
+      // Filter leave types based on eligibility
+      const leaveTypes = allLeaveTypes.filter((lt) => {
+        // Check gender restriction
+        if (lt.allowedGender && lt.allowedGender !== employeeData.gender) {
+          return false;
+        }
+
+        // Check required work days
+        if (lt.requiredWorkDays && lt.requiredWorkDays > 0) {
+          if (!employeeData.startWorkDate || daysWorked < lt.requiredWorkDays) {
+            return false;
+          }
+        }
+
+        return true;
       });
 
       // Get employee-specific balances
       const employeeBalances = await prisma.employeeLeaveBalance.findMany({
         where: {
-          employeeId: employee.id,
+          employeeId: employeeData.id,
           year,
         },
         include: {
@@ -69,7 +122,7 @@ export const leaveBalanceRoutes = new Elysia({ prefix: "/api/leave-balances" })
       // Get used leave counts for this year
       const usedLeaves = await prisma.leaveRequest.findMany({
         where: {
-          employeeId: employee.id,
+          employeeId: employeeData.id,
           status: "APPROVED",
           startDate: {
             gte: new Date(year, 0, 1),
@@ -159,9 +212,9 @@ export const leaveBalanceRoutes = new Elysia({ prefix: "/api/leave-balances" })
 
       const year = query.year ? parseInt(query.year) : new Date().getFullYear();
 
-      // Get all active leave types
+      // Get all active, non-deleted leave types
       const leaveTypes = await prisma.leaveTypeConfig.findMany({
-        where: { isActive: true },
+        where: { isActive: true, isDeleted: false },
         orderBy: { order: "asc" },
       });
 

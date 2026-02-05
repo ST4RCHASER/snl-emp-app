@@ -10,6 +10,8 @@ import {
   Button,
   Field,
   Input,
+  Dropdown,
+  Option,
   tokens,
 } from "@fluentui/react-components";
 import {
@@ -32,11 +34,14 @@ import { useAuth } from "@/auth/provider";
 import { useWindowRefresh } from "@/components/desktop/WindowContext";
 import { useMobile } from "@/hooks/useMobile";
 
+type Gender = "MALE" | "FEMALE" | "OTHER" | null;
+
 interface ProfileFormData {
   fullName: string;
   nickname: string;
   phone: string;
   dateOfBirth: string;
+  gender: Gender;
   addressLine1: string;
   addressLine2: string;
   city: string;
@@ -91,6 +96,7 @@ export default function Profile() {
     nickname: "",
     phone: "",
     dateOfBirth: "",
+    gender: null,
     addressLine1: "",
     addressLine2: "",
     city: "",
@@ -108,6 +114,7 @@ export default function Profile() {
         nickname: myEmployee.nickname || "",
         phone: myEmployee.phone || "",
         dateOfBirth: getDateKey(myEmployee.dateOfBirth),
+        gender: (myEmployee.gender as Gender) || null,
         addressLine1: myEmployee.addressLine1 || "",
         addressLine2: myEmployee.addressLine2 || "",
         city: myEmployee.city || "",
@@ -244,7 +251,7 @@ export default function Profile() {
                 onChange={(_, d) => setForm((f) => ({ ...f, phone: d.value }))}
               />
             </Field>
-            <Field label="Date of Birth" style={{ gridColumn: "1 / -1" }}>
+            <Field label="Date of Birth">
               <Input
                 type="date"
                 value={form.dateOfBirth}
@@ -252,6 +259,31 @@ export default function Profile() {
                   setForm((f) => ({ ...f, dateOfBirth: d.value }))
                 }
               />
+            </Field>
+            <Field label="Gender">
+              <Dropdown
+                value={
+                  form.gender === "MALE"
+                    ? "Male"
+                    : form.gender === "FEMALE"
+                      ? "Female"
+                      : form.gender === "OTHER"
+                        ? "Other"
+                        : ""
+                }
+                selectedOptions={form.gender ? [form.gender] : []}
+                onOptionSelect={(_, d) =>
+                  setForm((f) => ({
+                    ...f,
+                    gender: (d.optionValue as Gender) || null,
+                  }))
+                }
+                placeholder="Select gender"
+              >
+                <Option value="MALE">Male</Option>
+                <Option value="FEMALE">Female</Option>
+                <Option value="OTHER">Other</Option>
+              </Dropdown>
             </Field>
 
             <h4
@@ -462,10 +494,32 @@ export default function Profile() {
                 }
               />
               <InfoItem
+                icon={<Person24Regular />}
+                label="Gender"
+                value={
+                  employeeData.gender === "MALE"
+                    ? "Male"
+                    : employeeData.gender === "FEMALE"
+                      ? "Female"
+                      : employeeData.gender === "OTHER"
+                        ? "Other"
+                        : "Not set"
+                }
+              />
+              <InfoItem
                 icon={<Phone24Regular />}
                 label="Phone"
                 value={employeeData.phone || "Not set"}
               />
+              {employeeData.startWorkDate && (
+                <InfoItem
+                  icon={<Calendar24Regular />}
+                  label="Start Work Date"
+                  value={new Date(
+                    employeeData.startWorkDate,
+                  ).toLocaleDateString()}
+                />
+              )}
             </div>
 
             {(employeeData.addressLine1 ||

@@ -57,6 +57,7 @@ import {
   useDeleteLeaveType,
   useSeedLeaveTypes,
   type LeaveTypeConfig,
+  type Gender,
 } from "@/api/queries/leave-types";
 import {
   leaveBalanceQueries,
@@ -233,6 +234,7 @@ export default function LeaveManagement() {
   const { data: leaveTypes, isLoading: loadingTypes } = useQuery(
     leaveTypeQueries.all(isHR),
   );
+  const { data: eligibleLeaveTypes } = useQuery(leaveTypeQueries.eligible());
   const { data: myBalances } = useQuery(leaveBalanceQueries.my());
 
   const createLeave = useCreateLeave();
@@ -254,10 +256,10 @@ export default function LeaveManagement() {
     halfDayType: "morning" as const,
   });
 
-  // Get active leave types for the form
+  // Get active leave types for the form (use eligible types for the dropdown)
   const activeLeaveTypes = useMemo(
-    () => leaveTypes?.filter((lt) => lt.isActive) || [],
-    [leaveTypes],
+    () => eligibleLeaveTypes || [],
+    [eligibleLeaveTypes],
   );
 
   // Get selected leave type config
@@ -1850,6 +1852,8 @@ function LeaveTypesManagement({
     allowCarryover: false,
     carryoverMax: 0,
     requiresApproval: true,
+    requiredWorkDays: null as number | null,
+    allowedGender: null as Gender,
     color: "#0078d4",
     isActive: true,
   });
@@ -1869,6 +1873,8 @@ function LeaveTypesManagement({
           allowCarryover: editingType.allowCarryover,
           carryoverMax: editingType.carryoverMax,
           requiresApproval: editingType.requiresApproval,
+          requiredWorkDays: editingType.requiredWorkDays,
+          allowedGender: editingType.allowedGender,
           color: editingType.color || "#0078d4",
           isActive: editingType.isActive,
         });
@@ -1884,6 +1890,8 @@ function LeaveTypesManagement({
           allowCarryover: false,
           carryoverMax: 0,
           requiresApproval: true,
+          requiredWorkDays: null,
+          allowedGender: null,
           color: "#0078d4",
           isActive: true,
         });
@@ -1904,20 +1912,19 @@ function LeaveTypesManagement({
     onCloseDialog();
   };
 
-  const handleDelete = async (id: string) => {
-    if (confirm("Are you sure you want to deactivate this leave type?")) {
-      await deleteLeaveType.mutateAsync(id);
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [showSeedConfirm, setShowSeedConfirm] = useState(false);
+
+  const handleDelete = async () => {
+    if (deleteConfirm) {
+      await deleteLeaveType.mutateAsync(deleteConfirm);
+      setDeleteConfirm(null);
     }
   };
 
   const handleSeed = async () => {
-    if (
-      confirm(
-        "This will create default leave types (Annual, Sick, Personal, Birthday, Unpaid, Other). Continue?",
-      )
-    ) {
-      await seedLeaveTypes.mutateAsync();
-    }
+    await seedLeaveTypes.mutateAsync();
+    setShowSeedConfirm(false);
   };
 
   return (
@@ -1943,7 +1950,7 @@ function LeaveTypesManagement({
           {leaveTypes.length === 0 && (
             <Button
               appearance="secondary"
-              onClick={handleSeed}
+              onClick={() => setShowSeedConfirm(true)}
               disabled={seedLeaveTypes.isPending}
             >
               {seedLeaveTypes.isPending ? "Seeding..." : "Seed Defaults"}
@@ -2014,6 +2021,20 @@ function LeaveTypesManagement({
                         Carryover
                       </Badge>
                     )}
+                    {lt.requiredWorkDays && (
+                      <Badge color="severe" size="small">
+                        {lt.requiredWorkDays}d min
+                      </Badge>
+                    )}
+                    {lt.allowedGender && (
+                      <Badge color="brand" size="small">
+                        {lt.allowedGender === "MALE"
+                          ? "Male"
+                          : lt.allowedGender === "FEMALE"
+                            ? "Female"
+                            : "Other"}
+                      </Badge>
+                    )}
                   </div>
                 </TableCell>
                 <TableCell>
@@ -2031,16 +2052,14 @@ function LeaveTypesManagement({
                         onClick={() => onEdit(lt)}
                       />
                     </Tooltip>
-                    {lt.isActive && (
-                      <Tooltip content="Deactivate" relationship="label">
-                        <Button
-                          appearance="subtle"
-                          size="small"
-                          icon={<Delete24Regular />}
-                          onClick={() => handleDelete(lt.id)}
-                        />
-                      </Tooltip>
-                    )}
+                    <Tooltip content="Delete" relationship="label">
+                      <Button
+                        appearance="subtle"
+                        size="small"
+                        icon={<Delete24Regular />}
+                        onClick={() => setDeleteConfirm(lt.id)}
+                      />
+                    </Tooltip>
                   </div>
                 </TableCell>
               </TableRow>
@@ -2213,6 +2232,50 @@ function LeaveTypesManagement({
                     gap: 12,
                   }}
                 >
+                  <Field
+                    label="Required Work Days"
+                    hint="Minimum days employee must work before using this leave type"
+                  >
+                    <Input
+                      type="number"
+                      value={typeForm.requiredWorkDays?.toString() || ""}
+                      onChange={(_, d) =>
+                        setTypeForm((f) => ({
+                          ...f,
+                          requiredWorkDays: d.value ? parseInt(d.value) : null,
+                        }))
+                      }
+                      placeholder="e.g., 60"
+                    />
+                  </Field>
+                  <Field
+                    label="Allowed Gender"
+                    hint="Leave empty to allow all genders"
+                  >
+                    <Select
+                      value={typeForm.allowedGender || ""}
+                      onChange={(_, d) =>
+                        setTypeForm((f) => ({
+                          ...f,
+                          allowedGender: (d.value as Gender) || null,
+                        }))
+                      }
+                    >
+                      <option value="">All Genders</option>
+                      <option value="MALE">Male Only</option>
+                      <option value="FEMALE">Female Only</option>
+                      <option value="OTHER">Other Only</option>
+                    </Select>
+                  </Field>
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
+                    gap: 12,
+                  }}
+                >
                   <Switch
                     checked={typeForm.allowCarryover}
                     onChange={(_, d) =>
@@ -2264,6 +2327,69 @@ function LeaveTypesManagement({
                 {createLeaveType.isPending || updateLeaveType.isPending
                   ? "Saving..."
                   : "Save"}
+              </Button>
+            </DialogActions>
+          </DialogBody>
+        </DialogSurface>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog
+        open={!!deleteConfirm}
+        onOpenChange={(_, d) => !d.open && setDeleteConfirm(null)}
+      >
+        <DialogSurface>
+          <DialogBody>
+            <DialogTitle>Delete Leave Type</DialogTitle>
+            <DialogContent>
+              Are you sure you want to delete this leave type? This action
+              cannot be undone.
+            </DialogContent>
+            <DialogActions>
+              <Button
+                appearance="secondary"
+                onClick={() => setDeleteConfirm(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                appearance="primary"
+                onClick={handleDelete}
+                disabled={deleteLeaveType.isPending}
+                style={{ backgroundColor: tokens.colorPaletteRedBackground3 }}
+              >
+                {deleteLeaveType.isPending ? "Deleting..." : "Delete"}
+              </Button>
+            </DialogActions>
+          </DialogBody>
+        </DialogSurface>
+      </Dialog>
+
+      {/* Seed Confirmation Dialog */}
+      <Dialog
+        open={showSeedConfirm}
+        onOpenChange={(_, d) => !d.open && setShowSeedConfirm(false)}
+      >
+        <DialogSurface>
+          <DialogBody>
+            <DialogTitle>Seed Default Leave Types</DialogTitle>
+            <DialogContent>
+              This will create default leave types (Annual, Sick, Personal,
+              Birthday, Unpaid, Other). Continue?
+            </DialogContent>
+            <DialogActions>
+              <Button
+                appearance="secondary"
+                onClick={() => setShowSeedConfirm(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                appearance="primary"
+                onClick={handleSeed}
+                disabled={seedLeaveTypes.isPending}
+              >
+                {seedLeaveTypes.isPending ? "Creating..." : "Create Defaults"}
               </Button>
             </DialogActions>
           </DialogBody>

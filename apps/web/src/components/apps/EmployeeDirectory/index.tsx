@@ -215,6 +215,8 @@ function getDateKey(dateValue: unknown): string {
   }
 }
 
+type Gender = "MALE" | "FEMALE" | "OTHER" | null;
+
 interface Employee {
   id: string;
   employeeId: string;
@@ -223,6 +225,7 @@ interface Employee {
   avatar: string | null;
   phone: string | null;
   dateOfBirth: string | null;
+  gender: Gender;
   addressLine1: string | null;
   addressLine2: string | null;
   city: string | null;
@@ -233,6 +236,7 @@ interface Employee {
   position: string | null;
   salary: string | number | null;
   hireDate: string | null;
+  startWorkDate: string | null;
   user: {
     id: string;
     email: string;
@@ -247,6 +251,7 @@ interface EditFormData {
   nickname: string;
   phone: string;
   dateOfBirth: string;
+  gender: Gender;
   addressLine1: string;
   addressLine2: string;
   city: string;
@@ -257,6 +262,7 @@ interface EditFormData {
   position: string;
   salary: string;
   hireDate: string;
+  startWorkDate: string;
 }
 
 export default function EmployeeDirectory() {
@@ -270,6 +276,7 @@ export default function EmployeeDirectory() {
     nickname: "",
     phone: "",
     dateOfBirth: "",
+    gender: null,
     addressLine1: "",
     addressLine2: "",
     city: "",
@@ -280,6 +287,7 @@ export default function EmployeeDirectory() {
     position: "",
     salary: "",
     hireDate: "",
+    startWorkDate: "",
   });
 
   // Refresh data when window refresh button is clicked
@@ -346,6 +354,7 @@ export default function EmployeeDirectory() {
       nickname: emp.nickname || "",
       phone: emp.phone || "",
       dateOfBirth: getDateKey(emp.dateOfBirth),
+      gender: emp.gender,
       addressLine1: emp.addressLine1 || "",
       addressLine2: emp.addressLine2 || "",
       city: emp.city || "",
@@ -356,6 +365,7 @@ export default function EmployeeDirectory() {
       position: emp.position || "",
       salary: emp.salary ? String(emp.salary) : "",
       hireDate: getDateKey(emp.hireDate),
+      startWorkDate: getDateKey(emp.startWorkDate),
     });
     logAction(
       "edit_employee",
@@ -389,6 +399,7 @@ export default function EmployeeDirectory() {
     if (formData.nickname) dataToSend.nickname = formData.nickname;
     if (formData.phone) dataToSend.phone = formData.phone;
     if (formData.dateOfBirth) dataToSend.dateOfBirth = formData.dateOfBirth;
+    dataToSend.gender = formData.gender;
     if (formData.addressLine1) dataToSend.addressLine1 = formData.addressLine1;
     if (formData.addressLine2) dataToSend.addressLine2 = formData.addressLine2;
     if (formData.city) dataToSend.city = formData.city;
@@ -399,6 +410,8 @@ export default function EmployeeDirectory() {
     if (formData.position) dataToSend.position = formData.position;
     if (formData.salary) dataToSend.salary = parseFloat(formData.salary);
     if (formData.hireDate) dataToSend.hireDate = formData.hireDate;
+    if (formData.startWorkDate)
+      dataToSend.startWorkDate = formData.startWorkDate;
 
     try {
       // Update employee details
@@ -502,6 +515,32 @@ export default function EmployeeDirectory() {
                 }
               />
             </Field>
+            <Field label="Gender" size="small">
+              <Dropdown
+                size="small"
+                value={
+                  formData.gender === "MALE"
+                    ? "Male"
+                    : formData.gender === "FEMALE"
+                      ? "Female"
+                      : formData.gender === "OTHER"
+                        ? "Other"
+                        : ""
+                }
+                selectedOptions={formData.gender ? [formData.gender] : []}
+                onOptionSelect={(_, data) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    gender: (data.optionValue as Gender) || null,
+                  }))
+                }
+                placeholder="Select gender"
+              >
+                <Option value="MALE">Male</Option>
+                <Option value="FEMALE">Female</Option>
+                <Option value="OTHER">Other</Option>
+              </Dropdown>
+            </Field>
 
             <div className={styles.sectionTitle}>Address</div>
             <Field
@@ -595,6 +634,16 @@ export default function EmployeeDirectory() {
                 value={formData.hireDate}
                 onChange={(_, data) =>
                   handleInputChange("hireDate", data.value)
+                }
+              />
+            </Field>
+            <Field label="Start Work Date" size="small">
+              <Input
+                size="small"
+                type="date"
+                value={formData.startWorkDate}
+                onChange={(_, data) =>
+                  handleInputChange("startWorkDate", data.value)
                 }
               />
             </Field>

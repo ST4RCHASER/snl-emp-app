@@ -127,9 +127,9 @@ export const leaveRoutes = new Elysia({ prefix: "/api/leaves" })
         },
       });
 
-      // Get all active leave types
+      // Get all active, non-deleted leave types
       const leaveTypes = await prisma.leaveTypeConfig.findMany({
-        where: { isActive: true },
+        where: { isActive: true, isDeleted: false },
         orderBy: { order: "asc" },
       });
 
@@ -218,6 +218,39 @@ export const leaveRoutes = new Elysia({ prefix: "/api/leaves" })
       if (!leaveTypeConfig) {
         set.status = 400;
         return { message: `Invalid leave type: ${body.type}` };
+      }
+
+      // Check required work days eligibility
+      if (
+        leaveTypeConfig.requiredWorkDays &&
+        leaveTypeConfig.requiredWorkDays > 0
+      ) {
+        // Get employee's start work date
+        const employeeDetails = await prisma.employee.findUnique({
+          where: { id: employee.id },
+          select: { startWorkDate: true },
+        });
+
+        if (!employeeDetails?.startWorkDate) {
+          set.status = 400;
+          return {
+            message: `Cannot request ${leaveTypeConfig.name}: Your start work date is not set. Please contact HR to update your profile.`,
+          };
+        }
+
+        // Calculate days worked
+        const today = new Date();
+        const startWorkDate = new Date(employeeDetails.startWorkDate);
+        const daysWorked = Math.floor(
+          (today.getTime() - startWorkDate.getTime()) / (1000 * 60 * 60 * 24),
+        );
+
+        if (daysWorked < leaveTypeConfig.requiredWorkDays) {
+          set.status = 400;
+          return {
+            message: `Cannot request ${leaveTypeConfig.name}: You need to work at least ${leaveTypeConfig.requiredWorkDays} days before using this leave type. You have worked ${daysWorked} days.`,
+          };
+        }
       }
 
       // Check for overlapping leave requests (pending or approved)

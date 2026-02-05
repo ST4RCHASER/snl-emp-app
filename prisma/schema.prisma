@@ -31,6 +31,12 @@ enum ComplaintStatus {
   DONE
 }
 
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
 // ==================== AUTH TABLES (Better Auth) ====================
 
 model User {
@@ -157,6 +163,7 @@ model Employee {
   avatar      String?
   phone       String?
   dateOfBirth DateTime?
+  gender      Gender?
 
   // Address (optional)
   addressLine1 String?
@@ -167,10 +174,11 @@ model Employee {
   country      String?
 
   // Employment Details (optional, HR-editable)
-  department String?
-  position   String?
-  salary     Decimal?  @db.Decimal(12, 2)
-  hireDate   DateTime?
+  department    String?
+  position      String?
+  salary        Decimal?  @db.Decimal(12, 2)
+  hireDate      DateTime?
+  startWorkDate DateTime? // Date employee started working (for leave eligibility)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -299,11 +307,14 @@ model LeaveTypeConfig {
   allowCarryover   Boolean @default(false) // Whether unused days can carry over
   carryoverMax     Int     @default(0) // Max days that can carry over
   requiresApproval Boolean @default(true) // Whether manager approval is required
+  requiredWorkDays Int?    // Minimum work days required before employee can use this leave type
+  allowedGender    Gender? // If set, only employees with this gender can use this leave type
 
   color    String? // Color for UI display (hex)
   icon     String? // Icon name for UI
   order    Int     @default(0) // Display order (lower = first)
-  isActive Boolean @default(true) // Soft delete / hide
+  isActive Boolean @default(true) // Whether employees can use this leave type
+  isDeleted Boolean @default(false) // Soft delete to hide from table but keep for logs
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

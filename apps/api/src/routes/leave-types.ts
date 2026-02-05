@@ -16,11 +16,15 @@ export const leaveTypeRoutes = new Elysia({ prefix: "/api/leave-types" })
       }
 
       const includeInactive =
-        query.includeInactive === "true" &&
-        (isHR(user) || isDeveloper(user));
+        query.includeInactive === "true" && (isHR(user) || isDeveloper(user));
 
+      // HR/Admin/Dev see all non-deleted items (both active and inactive)
+      // Regular employees only see active non-deleted items
       const leaveTypes = await prisma.leaveTypeConfig.findMany({
-        where: includeInactive ? {} : { isActive: true },
+        where: {
+          isDeleted: false,
+          ...(includeInactive ? {} : { isActive: true }),
+        },
         orderBy: { order: "asc" },
       });
 
@@ -33,6 +37,67 @@ export const leaveTypeRoutes = new Elysia({ prefix: "/api/leave-types" })
       detail: {
         tags: ["Leave Types"],
         summary: "List all leave types",
+      },
+    },
+  )
+
+  // Get eligible leave types for current user (filtered by gender and work days)
+  .get(
+    "/eligible",
+    async ({ user, set }) => {
+      if (!user) {
+        set.status = 401;
+        return { message: "Unauthorized" };
+      }
+
+      // Get employee data with gender and startWorkDate
+      const employee = await prisma.employee.findUnique({
+        where: { userId: user.id },
+        select: {
+          gender: true,
+          startWorkDate: true,
+        },
+      });
+
+      // Calculate days worked
+      let daysWorked = 0;
+      if (employee?.startWorkDate) {
+        const today = new Date();
+        const startDate = new Date(employee.startWorkDate);
+        daysWorked = Math.floor(
+          (today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24),
+        );
+      }
+
+      // Get all active, non-deleted leave types
+      const allLeaveTypes = await prisma.leaveTypeConfig.findMany({
+        where: { isActive: true, isDeleted: false },
+        orderBy: { order: "asc" },
+      });
+
+      // Filter by eligibility
+      const eligibleLeaveTypes = allLeaveTypes.filter((lt) => {
+        // Check gender restriction
+        if (lt.allowedGender && lt.allowedGender !== employee?.gender) {
+          return false;
+        }
+
+        // Check required work days
+        if (lt.requiredWorkDays && lt.requiredWorkDays > 0) {
+          if (!employee?.startWorkDate || daysWorked < lt.requiredWorkDays) {
+            return false;
+          }
+        }
+
+        return true;
+      });
+
+      return eligibleLeaveTypes;
+    },
+    {
+      detail: {
+        tags: ["Leave Types"],
+        summary: "Get eligible leave types for current user",
       },
     },
   )
@@ -109,6 +174,8 @@ export const leaveTypeRoutes = new Elysia({ prefix: "/api/leave-types" })
           allowCarryover: body.allowCarryover ?? false,
           carryoverMax: body.carryoverMax ?? 0,
           requiresApproval: body.requiresApproval ?? true,
+          requiredWorkDays: body.requiredWorkDays,
+          allowedGender: body.allowedGender,
           color: body.color,
           icon: body.icon,
           order: (maxOrder._max.order ?? 0) + 1,
@@ -129,6 +196,16 @@ export const leaveTypeRoutes = new Elysia({ prefix: "/api/leave-types" })
         allowCarryover: t.Optional(t.Boolean()),
         carryoverMax: t.Optional(t.Number({ minimum: 0 })),
         requiresApproval: t.Optional(t.Boolean()),
+        requiredWorkDays: t.Optional(t.Nullable(t.Number({ minimum: 0 }))),
+        allowedGender: t.Optional(
+          t.Nullable(
+            t.Union([
+              t.Literal("MALE"),
+              t.Literal("FEMALE"),
+              t.Literal("OTHER"),
+            ]),
+          ),
+        ),
         color: t.Optional(t.String()),
         icon: t.Optional(t.String()),
       }),
@@ -201,6 +278,12 @@ export const leaveTypeRoutes = new Elysia({ prefix: "/api/leave-types" })
           ...(body.requiresApproval !== undefined && {
             requiresApproval: body.requiresApproval,
           }),
+          ...(body.requiredWorkDays !== undefined && {
+            requiredWorkDays: body.requiredWorkDays,
+          }),
+          ...(body.allowedGender !== undefined && {
+            allowedGender: body.allowedGender,
+          }),
           ...(body.color !== undefined && { color: body.color }),
           ...(body.icon !== undefined && { icon: body.icon }),
           ...(body.order !== undefined && { order: body.order }),
@@ -225,6 +308,16 @@ export const leaveTypeRoutes = new Elysia({ prefix: "/api/leave-types" })
         allowCarryover: t.Optional(t.Boolean()),
         carryoverMax: t.Optional(t.Number({ minimum: 0 })),
         requiresApproval: t.Optional(t.Boolean()),
+        requiredWorkDays: t.Optional(t.Nullable(t.Number({ minimum: 0 }))),
+        allowedGender: t.Optional(
+          t.Nullable(
+            t.Union([
+              t.Literal("MALE"),
+              t.Literal("FEMALE"),
+              t.Literal("OTHER"),
+            ]),
+          ),
+        ),
         color: t.Optional(t.Nullable(t.String())),
         icon: t.Optional(t.Nullable(t.String())),
         order: t.Optional(t.Number()),
@@ -260,13 +353,13 @@ export const leaveTypeRoutes = new Elysia({ prefix: "/api/leave-types" })
         return { message: "Leave type not found" };
       }
 
-      // Soft delete by setting isActive to false
+      // Soft delete by setting isDeleted to true
       await prisma.leaveTypeConfig.update({
         where: { id },
-        data: { isActive: false },
+        data: { isDeleted: true },
       });
 
-      return { message: "Leave type deactivated" };
+      return { message: "Leave type deleted" };
     },
     {
       params: t.Object({

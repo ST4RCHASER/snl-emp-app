@@ -122,6 +122,7 @@ export const employeeRoutes = new Elysia({ prefix: "/api/employees" })
           dateOfBirth: body.dateOfBirth
             ? new Date(body.dateOfBirth)
             : undefined,
+          gender: body.gender,
           addressLine1: body.addressLine1,
           addressLine2: body.addressLine2,
           city: body.city,
@@ -150,6 +151,14 @@ export const employeeRoutes = new Elysia({ prefix: "/api/employees" })
         nickname: t.Optional(t.String()),
         phone: t.Optional(t.String()),
         dateOfBirth: t.Optional(t.String()),
+        gender: t.Optional(
+          t.Union([
+            t.Literal("MALE"),
+            t.Literal("FEMALE"),
+            t.Literal("OTHER"),
+            t.Null(),
+          ]),
+        ),
         addressLine1: t.Optional(t.String()),
         addressLine2: t.Optional(t.String()),
         city: t.Optional(t.String()),
@@ -296,6 +305,9 @@ export const employeeRoutes = new Elysia({ prefix: "/api/employees" })
         data: {
           ...body,
           hireDate: body.hireDate ? new Date(body.hireDate) : undefined,
+          startWorkDate: body.startWorkDate
+            ? new Date(body.startWorkDate)
+            : undefined,
         },
         include: {
           user: {
@@ -322,6 +334,14 @@ export const employeeRoutes = new Elysia({ prefix: "/api/employees" })
         avatar: t.Optional(t.String()),
         phone: t.Optional(t.String()),
         dateOfBirth: t.Optional(t.String()),
+        gender: t.Optional(
+          t.Union([
+            t.Literal("MALE"),
+            t.Literal("FEMALE"),
+            t.Literal("OTHER"),
+            t.Null(),
+          ]),
+        ),
         addressLine1: t.Optional(t.String()),
         addressLine2: t.Optional(t.String()),
         city: t.Optional(t.String()),
@@ -332,6 +352,7 @@ export const employeeRoutes = new Elysia({ prefix: "/api/employees" })
         position: t.Optional(t.String()),
         salary: t.Optional(t.Number()),
         hireDate: t.Optional(t.String()),
+        startWorkDate: t.Optional(t.String()),
       }),
       detail: {
         tags: ["Employees"],
