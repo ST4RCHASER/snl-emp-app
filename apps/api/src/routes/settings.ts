@@ -1,7 +1,7 @@
 import { Elysia, t } from "elysia";
 import { prisma } from "@snl-emp/db";
 import { authPlugin } from "../auth/plugin.js";
-import { canManageSettings } from "../middleware/rbac.js";
+import { canManageSettings, isDeveloper } from "../middleware/rbac.js";
 
 export const settingsRoutes = new Elysia({ prefix: "/api/settings" })
   .use(authPlugin)
@@ -78,6 +78,77 @@ export const settingsRoutes = new Elysia({ prefix: "/api/settings" })
       detail: {
         tags: ["Settings"],
         summary: "Update global settings (HR only)",
+      },
+    },
+  )
+
+  // Get maintenance mode status (public, no auth required for checking)
+  .get(
+    "/maintenance",
+    async () => {
+      const settings = await prisma.globalSettings.findUnique({
+        where: { id: "global" },
+        select: {
+          maintenanceMode: true,
+          maintenanceMessage: true,
+        },
+      });
+
+      return {
+        maintenanceMode: settings?.maintenanceMode ?? false,
+        maintenanceMessage: settings?.maintenanceMessage ?? null,
+      };
+    },
+    {
+      detail: {
+        tags: ["Settings"],
+        summary: "Get maintenance mode status",
+      },
+    },
+  )
+
+  // Toggle maintenance mode (DEVELOPER only)
+  .put(
+    "/maintenance",
+    async ({ body, user, set }) => {
+      if (!user) {
+        set.status = 401;
+        return { message: "Unauthorized" };
+      }
+
+      if (!isDeveloper(user)) {
+        set.status = 403;
+        return { message: "Forbidden: Developer role required" };
+      }
+
+      const settings = await prisma.globalSettings.upsert({
+        where: { id: "global" },
+        update: {
+          maintenanceMode: body.maintenanceMode,
+          maintenanceMessage: body.maintenanceMessage,
+        },
+        create: {
+          id: "global",
+          maintenanceMode: body.maintenanceMode,
+          maintenanceMessage: body.maintenanceMessage,
+        },
+      });
+
+      return {
+        maintenanceMode: settings.maintenanceMode,
+        maintenanceMessage: settings.maintenanceMessage,
+      };
+    },
+    {
+      body: t.Object({
+        maintenanceMode: t.Boolean(),
+        maintenanceMessage: t.Optional(
+          t.Nullable(t.String({ maxLength: 500 })),
+        ),
+      }),
+      detail: {
+        tags: ["Settings"],
+        summary: "Toggle maintenance mode (Developer only)",
       },
     },
   );

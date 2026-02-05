@@ -37,6 +37,10 @@ jobs:
         id: server-changed-files
         with:
           files: apps/api/**
+      - uses: tj-actions/changed-files@v45
+        id: client-changed-files
+        with:
+          files: apps/web/**
 
   deploy-client:
     needs: verify-files

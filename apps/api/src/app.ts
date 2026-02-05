@@ -4,6 +4,11 @@ import { swagger } from "@elysiajs/swagger";
 import { authPlugin } from "./auth/plugin.js";
 import { logApiRequest } from "./middleware/apiLogger.js";
 import {
+  getMaintenanceStatus,
+  shouldBypassMaintenance,
+  isDeveloperRole,
+} from "./middleware/maintenance.js";
+import {
   employeeRoutes,
   leaveRoutes,
   leaveTypeRoutes,
@@ -60,6 +65,34 @@ export const app = new Elysia()
   })
   // Auth plugin - derives user from session
   .use(authPlugin)
+  // Maintenance mode check - after auth so we have user info
+  .onBeforeHandle(async (ctx) => {
+    const { request, set } = ctx;
+    const user = (ctx as unknown as { user?: { role?: string } | null }).user;
+    const url = new URL(request.url);
+    const path = url.pathname;
+
+    // Skip maintenance check for bypass paths
+    if (shouldBypassMaintenance(path)) {
+      return;
+    }
+
+    const maintenance = await getMaintenanceStatus();
+
+    if (maintenance.enabled) {
+      // If no user (not logged in) or not developer, block the request
+      if (!isDeveloperRole(user?.role)) {
+        set.status = 503;
+        return {
+          message: "Service Unavailable",
+          maintenance: true,
+          maintenanceMessage:
+            maintenance.message ||
+            "The system is currently under maintenance. Please try again later.",
+        };
+      }
+    }
+  })
   // Global API logging after response - now has access to user
   .onAfterHandle((ctx) => {
     const { request, set } = ctx;

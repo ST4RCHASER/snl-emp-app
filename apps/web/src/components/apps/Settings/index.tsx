@@ -26,8 +26,13 @@ import {
   Clock24Regular,
   ChatWarning24Regular,
   CalendarAgenda24Regular,
+  Wrench24Regular,
 } from "@fluentui/react-icons";
-import { settingsQueries, useUpdateSettings } from "@/api/queries/settings";
+import {
+  settingsQueries,
+  useUpdateSettings,
+  useUpdateMaintenanceMode,
+} from "@/api/queries/settings";
 import {
   preferencesQueries,
   useUpdatePreferences,
@@ -53,13 +58,15 @@ type MenuSection =
   | "display"
   | "work-policy"
   | "reservations"
-  | "complaints";
+  | "complaints"
+  | "maintenance";
 
 interface MenuItem {
   id: MenuSection;
   label: string;
   icon: React.ReactNode;
   hrOnly?: boolean;
+  devOnly?: boolean;
 }
 
 const MENU_ITEMS: MenuItem[] = [
@@ -83,6 +90,12 @@ const MENU_ITEMS: MenuItem[] = [
     label: "Complaints",
     icon: <ChatWarning24Regular />,
     hrOnly: true,
+  },
+  {
+    id: "maintenance",
+    label: "Maintenance",
+    icon: <Wrench24Regular />,
+    devOnly: true,
   },
 ];
 
@@ -153,6 +166,7 @@ export default function Settings() {
   const userRole = (user as { role?: string } | undefined)?.role;
   const isHR =
     userRole === "HR" || userRole === "ADMIN" || userRole === "DEVELOPER";
+  const isDeveloper = userRole === "DEVELOPER";
   const fileInputRef = useRef<HTMLInputElement>(null);
   const windowProps = useWindowProps<SettingsWindowProps>();
   const [activeSection, setActiveSection] = useState<MenuSection>(
@@ -174,11 +188,16 @@ export default function Settings() {
     ...settingsQueries.global,
     enabled: isHR,
   });
+  const { data: maintenance, isLoading: loadingMaintenance } = useQuery({
+    ...settingsQueries.maintenance,
+    enabled: isDeveloper,
+  });
   const { data: preferences, isLoading: loadingPreferences } = useQuery(
     preferencesQueries.user,
   );
 
   const updateSettings = useUpdateSettings();
+  const updateMaintenanceMode = useUpdateMaintenanceMode();
   const updatePreferences = useUpdatePreferences();
   const uploadBackground = useUploadBackground();
 
@@ -186,6 +205,11 @@ export default function Settings() {
     workHoursPerDay: 8,
     complaintChatEnabled: true,
     reservationRequiresApproval: true,
+  });
+
+  const [maintenanceForm, setMaintenanceForm] = useState({
+    maintenanceMode: false,
+    maintenanceMessage: "",
   });
 
   const [appearance, setAppearance] = useState({
@@ -214,6 +238,15 @@ export default function Settings() {
       });
     }
   }, [settings]);
+
+  useEffect(() => {
+    if (maintenance) {
+      setMaintenanceForm({
+        maintenanceMode: maintenance.maintenanceMode ?? false,
+        maintenanceMessage: maintenance.maintenanceMessage ?? "",
+      });
+    }
+  }, [maintenance]);
 
   useEffect(() => {
     if (preferences && "theme" in preferences) {
@@ -305,7 +338,9 @@ export default function Settings() {
     await updatePreferences.mutateAsync({ backgroundImage: null });
   };
 
-  const visibleMenuItems = MENU_ITEMS.filter((item) => !item.hrOnly || isHR);
+  const visibleMenuItems = MENU_ITEMS.filter(
+    (item) => (!item.hrOnly || isHR) && (!item.devOnly || isDeveloper),
+  );
 
   if (loadingPreferences) {
     return (
@@ -880,6 +915,138 @@ export default function Settings() {
                 <MessageBarBody>
                   <MessageBarTitle>Success</MessageBarTitle>
                   Settings saved successfully.
+                </MessageBarBody>
+              </MessageBar>
+            )}
+          </div>
+        );
+
+      case "maintenance":
+        if (loadingMaintenance) {
+          return (
+            <div
+              style={{ display: "flex", justifyContent: "center", padding: 40 }}
+            >
+              <Spinner size="medium" label="Loading..." />
+            </div>
+          );
+        }
+        return (
+          <div style={{ display: "flex", flexDirection: "column", gap: 32 }}>
+            <MessageBar intent="warning">
+              <MessageBarBody>
+                <MessageBarTitle>Developer Only</MessageBarTitle>
+                Enabling maintenance mode will prevent all non-developer users
+                from accessing the system.
+              </MessageBarBody>
+            </MessageBar>
+
+            <div>
+              <h3
+                style={{
+                  margin: "0 0 16px",
+                  fontWeight: 600,
+                  color: tokens.colorNeutralForeground1,
+                }}
+              >
+                Maintenance Mode
+              </h3>
+              <Card style={{ padding: 16, maxWidth: 500 }}>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                  }}
+                >
+                  <div>
+                    <div style={{ fontWeight: 600, marginBottom: 4 }}>
+                      Enable Maintenance Mode
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 12,
+                        color: maintenanceForm.maintenanceMode
+                          ? tokens.colorPaletteRedForeground1
+                          : tokens.colorNeutralForeground3,
+                      }}
+                    >
+                      {maintenanceForm.maintenanceMode
+                        ? "System is in maintenance mode - only developers can access"
+                        : "System is running normally"}
+                    </div>
+                  </div>
+                  <Switch
+                    checked={maintenanceForm.maintenanceMode}
+                    onChange={(_, d) =>
+                      setMaintenanceForm((f) => ({
+                        ...f,
+                        maintenanceMode: d.checked,
+                      }))
+                    }
+                  />
+                </div>
+              </Card>
+            </div>
+
+            <div>
+              <h3
+                style={{
+                  margin: "0 0 16px",
+                  fontWeight: 600,
+                  color: tokens.colorNeutralForeground1,
+                }}
+              >
+                Maintenance Message
+              </h3>
+              <p
+                style={{
+                  margin: "0 0 16px",
+                  color: tokens.colorNeutralForeground2,
+                  fontSize: 13,
+                }}
+              >
+                Custom message to display to users during maintenance.
+              </p>
+              <Field>
+                <Input
+                  value={maintenanceForm.maintenanceMessage}
+                  onChange={(_, d) =>
+                    setMaintenanceForm((f) => ({
+                      ...f,
+                      maintenanceMessage: d.value,
+                    }))
+                  }
+                  placeholder="The system is currently under maintenance. Please try again later."
+                  style={{ maxWidth: 500 }}
+                />
+              </Field>
+            </div>
+
+            <div>
+              <Button
+                appearance="primary"
+                icon={<Save24Regular />}
+                onClick={async () => {
+                  await updateMaintenanceMode.mutateAsync({
+                    maintenanceMode: maintenanceForm.maintenanceMode,
+                    maintenanceMessage:
+                      maintenanceForm.maintenanceMessage || null,
+                  });
+                }}
+                disabled={updateMaintenanceMode.isPending}
+              >
+                {updateMaintenanceMode.isPending
+                  ? "Saving..."
+                  : "Save Maintenance Settings"}
+              </Button>
+            </div>
+
+            {updateMaintenanceMode.isSuccess && (
+              <MessageBar intent="success">
+                <MessageBarBody>
+                  <MessageBarTitle>Success</MessageBarTitle>
+                  Maintenance settings saved successfully.
                 </MessageBarBody>
               </MessageBar>
             )}

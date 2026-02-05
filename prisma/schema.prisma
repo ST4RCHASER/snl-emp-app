@@ -286,6 +286,10 @@ model GlobalSettings {
   // Resource reservation settings
   reservationRequiresApproval Boolean @default(true) // Whether reservations need manager approval
 
+  // Maintenance mode
+  maintenanceMode    Boolean  @default(false) // When enabled, only DEV users can access
+  maintenanceMessage String?  // Optional custom message to show during maintenance
+
   updatedAt DateTime @updatedAt
 
   @@map("global_settings")
