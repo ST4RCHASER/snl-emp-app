@@ -49,3 +49,4 @@ packages/db/src/generated
 apps/web/src/routeTree.gen.ts
 .agents
 .claude
+.env.bak
